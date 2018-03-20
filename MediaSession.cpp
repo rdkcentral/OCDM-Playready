@@ -268,11 +268,14 @@ DRM_RESULT DRM_CALL MediaKeySession::_PolicyCallback(
 
 void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCallback) {
    
-  if (f_piMediaKeySessionCallback) 
+  if (f_piMediaKeySessionCallback) {
     m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
-  // FIXME : Custom data is not set;needs recheck.
-  playreadyGenerateKeyRequest();
+    // FIXME : Custom data is not set;needs recheck.
+    playreadyGenerateKeyRequest();
+  } else {
+      m_piCallback = nullptr;
+  }
 }
 
 bool MediaKeySession::playreadyGenerateKeyRequest() {
@@ -327,7 +330,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                                          &m_cbChallenge));
 
   m_eKeyState = KEY_PENDING;
-  m_piCallback->OnKeyMessage((const uint8_t *) m_pbChallenge, m_cbChallenge, (char *)m_pchSilentURL); 
+  if (m_piCallback)
+        m_piCallback->OnKeyMessage((const uint8_t *) m_pbChallenge, m_cbChallenge, (char *)m_pchSilentURL);
   return true;
 
 ErrorExit:
@@ -371,7 +375,8 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
   m_eKeyState = KEY_READY;
 
   if (m_eKeyState == KEY_READY) {
-    m_piCallback->OnKeyStatusUpdate("KeyUsable");
+      if (m_piCallback)
+        m_piCallback->OnKeyStatusUpdate("KeyUsable");
   }
   return;
 
