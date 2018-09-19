@@ -407,7 +407,10 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t *payloadData,
     uint32_t payloadDataSize,
     uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent) {
+    uint8_t **f_ppbOpaqueClearContent,
+    const uint8_t /* keyIdLength */,
+    const uint8_t* /* keyId */)
+{
   CDMi_RESULT status = CDMi_S_FALSE;
   DRM_AES_COUNTER_MODE_CONTEXT oAESContext = {0};
   DRM_RESULT dr = DRM_SUCCESS;

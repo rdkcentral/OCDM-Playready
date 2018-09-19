@@ -85,7 +85,10 @@ public:
         const uint8_t *f_pbData,
         uint32_t f_cbData,
         uint32_t *f_pcbOpaqueClearContent,
-        uint8_t **f_ppbOpaqueClearContent);
+        uint8_t **f_ppbOpaqueClearContent,
+        const uint8_t keyIdLength,
+        const uint8_t* keyId);
+
 
     virtual CDMi_RESULT ReleaseClearContent(
         const uint8_t *f_pbSessionKey,
