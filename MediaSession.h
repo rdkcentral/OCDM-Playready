@@ -42,7 +42,7 @@
 
 namespace CDMi {
 
-class MediaKeySession : public IMediaKeySession {
+class MediaKeySession : public IMediaKeySession, public IMediaKeySessionExt {
 private:
     enum KeyState {
         // Has been initialized.
@@ -66,7 +66,17 @@ public:
     //static const std::vector<std::string> m_mimeTypes;
 
     MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData);
+
+    // TODO: introduce MediaKeySessionExt?
+    MediaKeySession(uint32_t sessionId,
+            const char contentId[],
+            uint32_t contentIdLength,
+            LicenseTypeExt licenseType,
+            const uint8_t drmHeader[],
+            uint32_t drmHeaderLength);
+
     ~MediaKeySession();
+
     bool playreadyGenerateKeyRequest();
     bool ready() const { return m_eKeyState == KEY_READY; }
 
@@ -107,6 +117,24 @@ public:
         const uint32_t  f_cbClearContentOpaque,
         uint8_t  *f_pbClearContentOpaque );
 
+    uint32_t GetSessionIdExt(void) const override;
+
+    uint16_t PlaylevelCompressedVideo() const override;
+    uint16_t PlaylevelUncompressedVideo() const override;
+    uint16_t PlaylevelAnalogVideo() const override;
+    uint16_t PlaylevelCompressedAudio() const override;
+    uint16_t PlaylevelUncompressedAudio() const override;
+
+    virtual std::string GetContentIdExt() const override;
+    virtual void SetContentIdExt(const std::string & contentId) override;
+    virtual LicenseTypeExt GetLicenseTypeExt() const override;
+    virtual void SetLicenseTypeExt(LicenseTypeExt licenseType) override;
+    virtual SessionStateExt GetSessionStateExt() const override;
+    virtual void SetSessionStateExt(SessionStateExt sessionState) override;
+    virtual CDMi_RESULT SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength) override;
+    virtual CDMi_RESULT GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
+    virtual CDMi_RESULT StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId) override;
+    virtual CDMi_RESULT InitDecryptContextByKid() override;
 
 private:
 
@@ -132,6 +160,10 @@ private:
     DRM_DWORD m_cbChallenge;
     DRM_CHAR *m_pchSilentURL;  
     IMediaKeySessionCallback *m_piCallback;
+
+private:
+    std::string _contentIdExt; // TODO: remove this one
+
    
 };
 

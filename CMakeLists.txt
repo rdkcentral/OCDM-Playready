@@ -35,11 +35,15 @@ include_directories(${PLAYREADY_INCLUDE}/oem/common/inc)
 file(GLOB DRM_PLUGIN_INCLUDES *.h)
 
 set(DRM_PLUGIN_LIBS 
-    ${PLAYREADY_LIBRARIES})
+    ${PLAYREADY_LIBRARIES}
+    ${STAGING_DIR}/usr/lib/libplayready.so) # TODO: why is this needed and this will become a static lib
 
 set(DRM_PLUGIN_SOURCES 
     MediaSession.cpp 
-    MediaSystem.cpp)
+    MediaSystem.cpp
+    MediaSessionExt.cpp
+    MediaSystemExt.cpp
+)
 
 # add the library
 add_library(${DRM_PLUGIN_NAME} SHARED ${DRM_PLUGIN_SOURCES})
