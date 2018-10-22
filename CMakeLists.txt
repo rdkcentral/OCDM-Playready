@@ -13,6 +13,7 @@ endif()
 
 find_package(PlayReady)
 
+include_directories(${STAGING_DIR}/usr/include)
 include_directories(${STAGING_DIR}/usr/include/WPEFramework)
 #include_directories(${STAGING_DIR}/usr/include/playready)
 

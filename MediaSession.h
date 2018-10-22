@@ -40,7 +40,45 @@
 #undef __in
 #undef __out
 
+#include <string.h>
+#include <memory>
+
 namespace CDMi {
+
+struct PlayLevels2 {
+    uint16_t compressedDigitalVideoLevel_;   //!< Compressed digital video output protection level.
+    uint16_t uncompressedDigitalVideoLevel_; //!< Uncompressed digital video output protection level.
+    uint16_t analogVideoLevel_;              //!< Analog video output protection level.
+    uint16_t compressedDigitalAudioLevel_;   //!< Compressed digital audio output protection level.
+    uint16_t uncompressedDigitalAudioLevel_; //!< Uncompressed digital audio output protection level.
+};
+
+class LicenseResponse2 {
+public:
+    LicenseResponse2() : dlr(new DRM_LICENSE_RESPONSE) {}
+    ~LicenseResponse2() { delete dlr; }
+    DRM_LICENSE_RESPONSE * get() { return dlr; }
+    void clear() { memset(dlr, 0, sizeof(DRM_LICENSE_RESPONSE)); }
+private:
+    DRM_LICENSE_RESPONSE * const dlr;
+};
+
+enum OcdmLicenseType {
+    // this is in the order of priority
+    // standard license has priority over limited duration license
+    // TODO: do we need prefix here?
+    OCDM_LICENSE_INVALID = 0,
+    OCDM_LICENSE_LIMITED_DURATION,
+    OCDM_LICENSE_STANDARD
+};
+
+enum OcdmSessionState {
+    Ocdm_LicenseAcquisitionState = 0,
+	Ocdm_InactiveDecryptionState,
+	Ocdm_ActiveDecryptionState,
+	Ocdm_InvalidState
+};
+
 
 class MediaKeySession : public IMediaKeySession, public IMediaKeySessionExt {
 private:
@@ -164,6 +202,18 @@ private:
 private:
     std::string _contentIdExt; // TODO: remove this one
 
+private:
+	std::shared_ptr<DRM_DECRYPT_CONTEXT> decryptContext_;
+	std::vector<uint8_t> mDrmHeader;
+	std::vector<uint8_t> mNounce;
+    std::string mContentId;
+	//std::vector<char> mContentId2;
+    OcdmLicenseType mLicenseType; // TODO: don't use netflix enum
+    uint32_t mSessionId;
+    OcdmSessionState mSessionState; // TODO: don't use netflix stuff
+    std::unique_ptr<LicenseResponse2> mLicenseResponse;
+    std::vector<uint8_t> mSecureStopId;
+    PlayLevels2 levels_;
    
 };
 
