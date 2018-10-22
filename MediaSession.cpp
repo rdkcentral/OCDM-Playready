@@ -303,7 +303,7 @@ void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCal
     m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
     // FIXME : Custom data is not set;needs recheck.
-    playreadyGenerateKeyRequest();
+    //playreadyGenerateKeyRequest();
   } else {
       m_piCallback = nullptr;
   }
@@ -561,6 +561,7 @@ ErrorExit:
   }
   return status;
 }
+
 
 CDMi_RESULT MediaKeySession::ReleaseClearContent(
     const uint8_t *f_pbSessionKey,

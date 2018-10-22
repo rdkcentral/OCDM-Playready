@@ -173,6 +173,7 @@ public:
     virtual CDMi_RESULT GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
     virtual CDMi_RESULT StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId) override;
     virtual CDMi_RESULT InitDecryptContextByKid() override;
+    virtual CDMi_RESULT DecryptNetflix(const unsigned char* IVData, uint32_t IVDataSize, unsigned long long byteOffset, unsigned char data[], uint32_t size) override;
 
 private:
 

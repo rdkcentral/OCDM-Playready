@@ -289,6 +289,17 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     }
 
     mNounce.resize(TEE_SESSION_ID_LEN);
+
+    fprintf(stderr, "challengeSize: %u\n", challengeSize);
+    fprintf(stderr, "challenge: %p\n", challenge);
+    fprintf(stderr, "isLDL: %u\n", isLDL);
+
+    // PlayReady doesn't like valid pointer + size 0
+    DRM_BYTE* passedChallenge = (DRM_BYTE*)challenge; // TODO: C-style casting
+    if (challengeSize == 0) {
+    	passedChallenge = nullptr;
+    }
+
     err = Drm_LicenseAcq_GenerateChallenge_Netflix(appContext_.get(),
                                                    RIGHTS,
                                                    sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
@@ -296,8 +307,10 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
                                                    NULL, 0,
                                                    NULL, NULL,
                                                    NULL, NULL,
-												   (DRM_BYTE*)challenge, &challengeSize,
+												   passedChallenge, &challengeSize,
                                                    &mNounce[0], isLDL);
+
+    fprintf(stderr, "ChallengeSize: %u\n", challengeSize);
 
     if ((err != DRM_E_BUFFERTOOSMALL) && (DRM_FAILED(err)))
     {
@@ -312,5 +325,72 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
 
     return 0;
 }
+
+CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_t IVDataSize, unsigned long long byteOffset, unsigned char data[], uint32_t size)
+{
+    ScopedMutex2 systemLock(drmAppContextMutex_);
+
+    assert(IVDataSize > 0);
+    if(size == 0){
+    	//return ERROR_NONE;
+    	return 0;
+    }
+
+    if (!decryptContext_.get()) {
+    	fprintf(stderr, "Error: no decrypt context (yet?)\n");
+    	return 1;
+    }
+
+    // Initialize the decryption context for Cocktail packaged
+    // content. This is a no-op for AES packaged content.
+    DRM_RESULT err = DRM_SUCCESS;
+    if (size <= 15)
+    {
+        err = Drm_Reader_InitDecrypt(decryptContext_.get(),
+                                     (DRM_BYTE*)data, size);
+    }
+    else
+    {
+        err = Drm_Reader_InitDecrypt(decryptContext_.get(),
+                                     (DRM_BYTE*)(data + size - 15), size);
+    }
+    if (DRM_FAILED(err))
+    {
+        return 1;
+    }
+
+    DRM_AES_COUNTER_MODE_CONTEXT ctrContext;
+    // IV : 8 bytes seed + 8 bytes counter
+    if (IVData && IVDataSize == 8) {
+        // IVData : 8 bytes seeds only
+        // In this case, IVData include only 8 bytes seed. We need to calculate block offset from byte offset
+        NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
+        ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
+        ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
+    } else if (IVData && IVDataSize == 16) {
+        // Dolby Vision encrypted EL's 16 bytes IV case.
+        // IVData : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
+        // IVData includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of IVData is block offset)
+        NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0);
+        NETWORKBYTES_TO_QWORD(byteOffset, IVData, 8);
+        ctrContext.qwBlockOffset = byteOffset;
+        ctrContext.bByteOffset = 0;
+    } else  {
+        ctrContext.qwInitializationVector = 0;
+        ctrContext.qwBlockOffset = byteOffset >> 4;
+        ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf);
+    }
+
+    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext,
+                             (DRM_BYTE*)data,
+                             size);
+    if (DRM_FAILED(err))
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
 
 }

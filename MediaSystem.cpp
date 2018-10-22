@@ -245,8 +245,7 @@ public:
 
     CDMi_RESULT InitSystemNetflix() override
     {
-        // TODO
-        //ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex2 lock(drmAppContextMutex_);
 
         DRM_RESULT err;
 
