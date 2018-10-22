@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-#include "cdmi.h"
+//#include "cdmi.h"
+#include <interfaces/IDRM.h>
 #include "MediaSession.h"
 
 namespace CDMi {

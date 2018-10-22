@@ -13,6 +13,25 @@ endif()
 
 find_package(PlayReady)
 
+include_directories(${STAGING_DIR}/usr/include/WPEFramework)
+#include_directories(${STAGING_DIR}/usr/include/playready)
+
+set(PLAYREADY_INCLUDE "${STAGING_DIR}/usr/include/playready")
+
+add_definitions( -DPLAYREADY )
+add_definitions( -DPLAYREADY2 )
+add_definitions( -DPLAYREADY2TEE )
+add_definitions( -DPLAYREADY2_5 )
+add_definitions( -DPLAYREADY2_5_TEE )
+add_definitions( -DPLAYREADY2_5_TEE_LDL )
+
+include("${PLAYREADY_INCLUDE}/playready.cmake")
+
+include_directories(${PLAYREADY_INCLUDE})
+include_directories(${PLAYREADY_INCLUDE}/oem/inc)
+include_directories(${PLAYREADY_INCLUDE}/oem/ansi/inc)
+include_directories(${PLAYREADY_INCLUDE}/oem/common/inc)
+
 file(GLOB DRM_PLUGIN_INCLUDES *.h)
 
 set(DRM_PLUGIN_LIBS 

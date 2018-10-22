@@ -17,7 +17,8 @@
 
 #pragma once
 
-#include "cdmi.h"
+//#include "cdmi.h"
+#include <interfaces/IDRM.h>
 
 #include <drmbuild_oem.h>
 #include <drmmanager.h>
