@@ -286,6 +286,79 @@ public:
         return 0;
     }
 
+    CDMi_RESULT TeardownSystemNetflix() override
+    {
+        ScopedMutex2 lock(drmAppContextMutex_);
+
+        if(!appContext_.get() ) {
+        	fprintf(stderr, "Error, no app context yet\n");
+            return 1;
+        }
+
+        DRM_RESULT err;
+        err = Drm_Reader_Commit(appContext_.get(), NULL, NULL);
+        if(DRM_FAILED(err)) {
+        	fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
+        }
+
+        err = Drm_StoreMgmt_CleanupStore(appContext_.get(),
+                                         DRM_STORE_CLEANUP_DELETE_EXPIRED_LICENSES |
+                                         DRM_STORE_CLEANUP_DELETE_REMOVAL_DATE_LICENSES,
+                                         NULL, 0, NULL);
+        if(DRM_FAILED(err))
+        {
+        	fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
+        	appContext_.reset();
+        }
+        // Uninitialize drm context
+        Drm_Uninitialize(appContext_.get());
+        appContext_.reset();
+
+        // Unitialize platform
+        err = Drm_Platform_Uninitialize();
+        if(DRM_FAILED(err))
+        {
+        	appContext_.reset();
+        }
+
+        return 0;
+    }
+
+    CDMi_RESULT DeleteSecureStore() override
+    {
+        ScopedMutex2 lock(drmAppContextMutex_);
+
+    	DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
+        if (err != DRM_SUCCESS)
+        {
+            fprintf(stderr, "Error: Drm_DeleteSecureStore returned 0x%lX\n", (long)err);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    CDMi_RESULT GetSecureStoreHash(
+            uint8_t secureStoreHash[],
+            uint32_t secureStoreHashLength) override
+    {
+        ScopedMutex2 lock(drmAppContextMutex_);
+
+    	if (secureStoreHashLength < 256)
+    	{
+            fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
+            return 1;
+    	}
+
+    	DRM_RESULT err = Drm_GetSecureStoreHash(&drmStore_, secureStoreHash);
+        if (err != DRM_SUCCESS)
+        {
+            fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
+            return 1;
+        }
+
+        return 0;
+    }
 
 private:
 	DRM_WCHAR* drmdir_;
