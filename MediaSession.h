@@ -20,7 +20,17 @@
 #include "cdmi.h"
 
 #include <drmbuild_oem.h>
+#ifdef PR_3_3
+#include <drmbytemanip.h>
+#if defined( min )
+    #undef min(a,b)
+#endif /* defined( min ) */
+#if defined( max )
+    #undef max(a,b)
+#endif /* defined( max ) */
+#else /* PR_3_3 */
 #include <drmcommon.h>
+#endif /* PR_3_3 */
 #include <drmmanager.h>
 #include <drmmathsafe.h>
 #include <drmtypes.h>
@@ -98,7 +108,13 @@ public:
 
 
 private:
-    static DRM_RESULT DRM_CALL _PolicyCallback(const DRM_VOID *, DRM_POLICY_CALLBACK_TYPE f_dwCallbackType, const DRM_VOID *);
+
+
+    static DRM_RESULT DRM_CALL _PolicyCallback(const DRM_VOID *, DRM_POLICY_CALLBACK_TYPE f_dwCallbackType, 
+#ifdef PR_3_3
+        const DRM_KID *, const DRM_LID *,
+#endif
+        const DRM_VOID *);
 
     DRM_APP_CONTEXT *m_poAppContext;
     DRM_DECRYPT_CONTEXT m_oDecryptContext;
@@ -108,7 +124,11 @@ private:
 
     DRM_BYTE *m_pbRevocationBuffer;
     KeyState m_eKeyState;
+#ifdef PR_3_3
+    DRM_CHAR m_rgchSessionID[CCH_BASE64_EQUIV(sizeof(DRM_ID)) + 1];
+#else
     DRM_CHAR m_rgchSessionID[CCH_BASE64_EQUIV(SIZEOF(DRM_ID)) + 1];
+#endif
     DRM_BOOL m_fCommit;
       
     DRM_BYTE *m_pbChallenge;
