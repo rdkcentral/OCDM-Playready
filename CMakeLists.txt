@@ -14,7 +14,7 @@ else()
    set(STAGING_DIR "${CMAKE_FIND_ROOT_PATH}")
 endif()
 
-find_package(PlayReady REQUIRED)
+find_package(PlayReady)
 
 file(GLOB DRM_PLUGIN_INCLUDES *.h)
 

@@ -7,7 +7,7 @@
 #
 
 find_package(PkgConfig)
-pkg_check_modules(PC_PLAYREADY playready)
+pkg_check_modules(PC_PLAYREADY REQUIRED playready)
 
 if(PC_PLAYREADY_FOUND)
     if(PLAYREADY_FIND_VERSION AND PC_PLAYREADY_VERSION)
