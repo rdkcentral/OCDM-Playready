@@ -18,6 +18,10 @@ if(PC_PLAYREADY_FOUND)
         endif()
     endif()
 
+    if (PC_PLAYREADY_VERSION AND "${PC_PLAYREADY_VERSION}" EQUAL "3.3")
+        add_definitions(-DPR_3_3)
+    endif()
+
     if(PC_PLAYREADY_FOUND)
 
         # CPFLAGS += -DDRM_BUILD_PROFILE=DRM_BUILD_PROFILE_OEM  
