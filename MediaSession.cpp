@@ -33,12 +33,22 @@ namespace CDMi {
 
 // The default location of CDM DRM store.
 // /tmp/drmstore.dat
+#ifdef PR_3_3
+const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {DRM_WCHAR_CAST('/'), DRM_WCHAR_CAST('t'), DRM_WCHAR_CAST('m'), DRM_WCHAR_CAST('p'), DRM_WCHAR_CAST('/'),
+                                            DRM_WCHAR_CAST('d'), DRM_WCHAR_CAST('r'), DRM_WCHAR_CAST('m'), DRM_WCHAR_CAST('s'), DRM_WCHAR_CAST('t'),
+                                            DRM_WCHAR_CAST('o'), DRM_WCHAR_CAST('r'), DRM_WCHAR_CAST('e'), DRM_WCHAR_CAST('.'), DRM_WCHAR_CAST('d'),
+                                            DRM_WCHAR_CAST('a'), DRM_WCHAR_CAST('t'), DRM_WCHAR_CAST('\0')};
+
+const DRM_CONST_STRING g_dstrCDMDrmStoreName = DRM_CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
+#else
 const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {WCHAR_CAST('/'), WCHAR_CAST('t'), WCHAR_CAST('m'), WCHAR_CAST('p'), WCHAR_CAST('/'),
                                             WCHAR_CAST('d'), WCHAR_CAST('r'), WCHAR_CAST('m'), WCHAR_CAST('s'), WCHAR_CAST('t'),
                                             WCHAR_CAST('o'), WCHAR_CAST('r'), WCHAR_CAST('e'), WCHAR_CAST('.'), WCHAR_CAST('d'),
                                             WCHAR_CAST('a'), WCHAR_CAST('t'), WCHAR_CAST('\0')};
 
 const DRM_CONST_STRING g_dstrCDMDrmStoreName = CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
+#endif
+
 const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrWMDRM_RIGHT_PLAYBACK};
 
 
@@ -173,7 +183,12 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_piCallback(nullptr) {
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_ID oSessionID;
+
+#ifdef PR_3_3
+  DRM_DWORD cchEncodedSessionID = sizeof(m_rgchSessionID);
+#else
   DRM_DWORD cchEncodedSessionID = SIZEOF(m_rgchSessionID);
+#endif
   // FIXME: Change the interface of this method? Not sure why the win32 bondage is still so popular.
   std::string initData(reinterpret_cast<const char*>(f_pbInitData), f_cbInitData);
   std::string playreadyInitData;
@@ -183,7 +198,11 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
   ChkMem(m_pbOpaqueBuffer = (DRM_BYTE *)Oem_MemAlloc(MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE));
   m_cbOpaqueBuffer = MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE;
 
+#ifdef PR_3_3
+  ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(sizeof(DRM_APP_CONTEXT)));
+#else
   ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(SIZEOF(DRM_APP_CONTEXT)));
+#endif
 
   // Initialize DRM app context.
   ChkDR(Drm_Initialize(m_poAppContext,
@@ -200,16 +219,30 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
                                    REVOCATION_BUFFER_SIZE));
   }
 
+#ifdef PR_3_3
+  // Generate a random media session ID.
+  ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, sizeof(oSessionID)));
+  ZEROMEM(m_rgchSessionID, sizeof(m_rgchSessionID));
+
+  // Store the generated media session ID in base64 encoded form.
+  ChkDR(DRM_B64_EncodeA((DRM_BYTE *)&oSessionID,
+                        sizeof(oSessionID),
+                        m_rgchSessionID,
+                        &cchEncodedSessionID,
+                        0));
+#else
   // Generate a random media session ID.
   ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
-
   ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
+
   // Store the generated media session ID in base64 encoded form.
   ChkDR(DRM_B64_EncodeA((DRM_BYTE *)&oSessionID,
                         SIZEOF(oSessionID),
                         m_rgchSessionID,
                         &cchEncodedSessionID,
                         0));
+#endif
+
 
   // The current state MUST be KEY_INIT otherwise error out.
   ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
@@ -261,7 +294,11 @@ const char *MediaKeySession::GetKeySystem(void) const {
 
 DRM_RESULT DRM_CALL MediaKeySession::_PolicyCallback(
     const DRM_VOID *f_pvOutputLevelsData, 
-    DRM_POLICY_CALLBACK_TYPE f_dwCallbackType, 
+    DRM_POLICY_CALLBACK_TYPE f_dwCallbackType,
+#ifdef PR_3_3
+    const DRM_KID *f_pKID,
+    const DRM_LID *f_pLID,
+#endif
     const DRM_VOID *f_pv) {
   return DRM_SUCCESS;
 }
@@ -282,7 +319,30 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
     
   DRM_RESULT dr = DRM_SUCCESS; 
   DRM_DWORD cchSilentURL = 0;
+#ifdef PR_3_3
+  DRM_ANSI_STRING dastrCustomData = DRM_EMPTY_DRM_STRING;
+#else
   DRM_ANSI_STRING dastrCustomData = EMPTY_DRM_STRING;
+#endif
+
+/* PRv3.3 support */
+#ifdef PR_3_3
+  dr = Drm_Reader_Bind(m_poAppContext,
+                        g_rgpdstrRights,
+                        DRM_NO_OF(g_rgpdstrRights),
+                        _PolicyCallback,
+                        NULL,
+                        &m_oDecryptContext);
+
+  if (dr == DRM_SUCCESS)
+  {
+      m_eKeyState = KEY_READY;
+      if (m_piCallback)
+        m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
+      return true;
+  }
+#endif
+
   // FIXME :  Check add case Play rights already acquired
   // Try to figure out the size of the license acquisition
   // challenge to be returned.
@@ -296,8 +356,14 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                                          &cchSilentURL,
                                          NULL,
                                          NULL,
+#ifdef PR_3_3						//PRv3.3 support
+                                         m_pbChallenge,
+                                         &m_cbChallenge,
+                                         NULL);
+#else
                                          NULL,
                                          &m_cbChallenge);
+#endif
 
   if (dr == DRM_E_BUFFERTOOSMALL) {
     if (cchSilentURL > 0) {
@@ -327,7 +393,13 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                                          NULL,
                                          NULL,
                                          m_pbChallenge,
+#ifdef PR_3_3						//PRv3.3 support
+                                         &m_cbChallenge,
+                                         NULL));
+#else
                                          &m_cbChallenge));
+#endif
+
 
   m_eKeyState = KEY_PENDING;
   if (m_piCallback)
@@ -359,18 +431,29 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
 
   ChkDR(Drm_LicenseAcq_ProcessResponse(m_poAppContext,
                                        DRM_PROCESS_LIC_RESPONSE_SIGNATURE_NOT_REQUIRED,
+#ifndef PR_3_3				//PRv3.3 support
                                        NULL,
                                        NULL,
+#endif
                                        const_cast<DRM_BYTE *>(m_pbKeyMessageResponse),
                                        m_cbKeyMessageResponse,
                                        &oLicenseResponse));
 
+#ifdef PR_3_3
+  ChkDR(Drm_Reader_Bind(m_poAppContext,
+                        g_rgpdstrRights,
+                        DRM_NO_OF(g_rgpdstrRights),
+                        _PolicyCallback,
+                        NULL,
+                        &m_oDecryptContext));
+#else
   ChkDR(Drm_Reader_Bind(m_poAppContext,
                         g_rgpdstrRights,
                         NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
                         NULL,
                         &m_oDecryptContext));
+#endif
 
   m_eKeyState = KEY_READY;
 
@@ -418,7 +501,24 @@ CDMi_RESULT MediaKeySession::Decrypt(
   uint8_t *ivData = (uint8_t *) f_pbIV;
   uint8_t temp;
 
+/* PRv3.3 support */
+#ifdef PR_3_3
+    DRM_DWORD rgdwMappings[2];
+    if( f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL )
+    {
+        dr = DRM_E_INVALIDARG;
+        goto ErrorExit;
+    }
+
+    *f_pcbOpaqueClearContent = 0;
+    *f_ppbOpaqueClearContent = NULL;
+
+    ChkBOOL(m_eKeyState == KEY_READY, DRM_E_INVALIDARG);
+    ChkArg(f_pbIV != NULL && f_cbIV == sizeof(DRM_UINT64));
+#else
   ChkDR(Drm_Reader_InitDecrypt(&m_oDecryptContext, NULL, 0));
+#endif
+
   // FIXME: IV bytes need to be swapped ???
   for (uint32_t i = 0; i < f_cbIV / 2; i++) {
     temp = ivData[i];
@@ -427,16 +527,42 @@ CDMi_RESULT MediaKeySession::Decrypt(
   }
 
   MEMCPY(&oAESContext.qwInitializationVector, ivData, f_cbIV);
+
+/* PRv3.3 support */
+#ifdef PR_3_3
+    if ( NULL == f_pdwSubSampleMapping )
+    {
+        rgdwMappings[0] = 0;
+        rgdwMappings[1] = payloadDataSize;
+        f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
+        f_cdwSubSampleMapping = DRM_NO_OF(rgdwMappings);
+    }
+
+    ChkDR(Drm_Reader_DecryptOpaque(
+        &m_oDecryptContext,
+        f_cdwSubSampleMapping,
+        reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
+        oAESContext.qwInitializationVector,
+        payloadDataSize,
+        (DRM_BYTE *) payloadData,
+        reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
+        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent)));
+#else
   ChkDR(Drm_Reader_Decrypt(&m_oDecryptContext, &oAESContext, (DRM_BYTE *) payloadData,  payloadDataSize));
+#endif
      
   // Call commit during the decryption of the first sample.
   if (!m_fCommit) {
     ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL));
     m_fCommit = TRUE;
   } 
+
+/* PRv3.3 support */
+#ifndef PR_3_3
   // Return clear content.
   *f_pcbOpaqueClearContent = payloadDataSize;
   *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
+#endif
   status = CDMi_SUCCESS;
 
   return status;
@@ -446,6 +572,18 @@ ErrorExit:
     const DRM_CHAR* description;
     DRM_ERR_GetErrorNameFromCode(dr, &description);
     printf("playready error: %s\n", description);
+
+/* PRv3.3 support */
+#ifdef PR_3_3
+        if( f_pcbOpaqueClearContent != NULL )
+          {
+              *f_pcbOpaqueClearContent = 0;
+          }
+          if( f_ppbOpaqueClearContent != NULL )
+          {
+              *f_ppbOpaqueClearContent = NULL;
+          }
+#endif
   }
   return status;
 }

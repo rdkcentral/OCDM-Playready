@@ -7,7 +7,7 @@
 #
 
 find_package(PkgConfig)
-pkg_check_modules(PC_PLAYREADY playready)
+pkg_check_modules(PC_PLAYREADY REQUIRED playready)
 
 if(PC_PLAYREADY_FOUND)
     if(PLAYREADY_FIND_VERSION AND PC_PLAYREADY_VERSION)
@@ -16,6 +16,10 @@ if(PC_PLAYREADY_FOUND)
             set(PLAYREADY_FOUND_TEXT "Found incorrect version")
             unset(PC_PLAYREADY_FOUND)
         endif()
+    endif()
+
+    if (PC_PLAYREADY_VERSION AND "${PC_PLAYREADY_VERSION}" EQUAL "3.3")
+        add_definitions(-DPR_3_3)
     endif()
 
     if(PC_PLAYREADY_FOUND)
