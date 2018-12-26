@@ -7,11 +7,8 @@ set(DRM_PLUGIN_NAME "PlayReady")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-if(NOT CMAKE_CROSSCOMPILING)
-   set(STAGING_DIR "${CMAKE_INSTALL_PREFIX}")
-else()
-   # TODO: this can be multiple directories
-   set(STAGING_DIR "${CMAKE_FIND_ROOT_PATH}")
+if(NOT NAMESPACE)
+   set(NAMESPACE "WPEFramework")
 endif()
 
 find_package(PlayReady)
@@ -33,4 +30,4 @@ target_link_libraries(${DRM_PLUGIN_NAME} ${DRM_PLUGIN_LIBS})
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES SUFFIX ".drm")
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES PREFIX "")
 
-install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/WPEFramework/OCDM)
+install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${NAMESPACE}/OCDM)
