@@ -326,7 +326,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     return 0;
 }
 
-CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_t IVDataSize, unsigned long long byteOffset, unsigned char data[], uint32_t size)
+CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_t IVDataSize, unsigned long long byteOffset, unsigned char data[], uint32_t size, bool initWithLast15)
 {
     ScopedMutex2 systemLock(drmAppContextMutex_);
 
