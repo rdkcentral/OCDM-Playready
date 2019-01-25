@@ -340,53 +340,86 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_
     	fprintf(stderr, "Error: no decrypt context (yet?)\n");
     	return 1;
     }
-
-    // Initialize the decryption context for Cocktail packaged
-    // content. This is a no-op for AES packaged content.
+    
     DRM_RESULT err = DRM_SUCCESS;
-    if (size <= 15)
-    {
-        err = Drm_Reader_InitDecrypt(decryptContext_.get(),
-                                     (DRM_BYTE*)data, size);
+    if (!initWithLast15) {
+        err = Drm_Reader_InitDecrypt(&m_oDecryptContext, NULL, 0);
+    } else {
+        // Initialize the decryption context for Cocktail packaged
+        // content. This is a no-op for AES packaged content.
+        if (size <= 15)
+        {
+            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)data, size);
+        }
+        else
+        {
+            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)(data + size - 15), size);
+        }
     }
-    else
+    if (DRM_FAILED(err))
     {
-        err = Drm_Reader_InitDecrypt(decryptContext_.get(),
-                                     (DRM_BYTE*)(data + size - 15), size);
+        fprintf(stderr, "Failed to init decrypt\n");
+        return 1;
     }
+
+    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
+    // TODO: can be done in another way (now abusing "initWithLast15" variable)
+    if (initWithLast15) {
+        // Netflix case
+        // IV : 8 bytes seed + 8 bytes counter
+        if (IVData && IVDataSize == 8) {
+            // IVData : 8 bytes seeds only
+            // In this case, IVData include only 8 bytes seed. We need to calculate block offset from byte offset
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
+            ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
+            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
+        } else if (IVData && IVDataSize == 16) {
+            // Dolby Vision encrypted EL's 16 bytes IV case.
+            // IVData : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
+            // IVData includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of IVData is block offset)
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0);
+            NETWORKBYTES_TO_QWORD(byteOffset, IVData, 8);
+            ctrContext.qwBlockOffset = byteOffset;
+            ctrContext.bByteOffset = 0;
+        } else  {
+            ctrContext.qwInitializationVector = 0;
+            ctrContext.qwBlockOffset = byteOffset >> 4;
+            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf);
+        }
+    } else {
+       // Regular case
+       // FIXME: IV bytes need to be swapped ???
+       // TODO: is this for-loop the same as "NETWORKBYTES_TO_QWORD"?
+       unsigned char * ivDataNonConst = const_cast<unsigned char *>(IVData); // TODO: this is ugly
+       for (uint32_t i = 0; i < IVDataSize / 2; i++) {
+          unsigned char temp = ivDataNonConst[i];
+          ivDataNonConst[i] = ivDataNonConst[IVDataSize - i - 1];
+          ivDataNonConst[IVDataSize - i - 1] = temp;
+       }
+
+       MEMCPY(&ctrContext.qwInitializationVector, IVData, IVDataSize);
+    }
+
+    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext, (DRM_BYTE*)data, size);
     if (DRM_FAILED(err))
     {
         return 1;
     }
 
-    DRM_AES_COUNTER_MODE_CONTEXT ctrContext;
-    // IV : 8 bytes seed + 8 bytes counter
-    if (IVData && IVDataSize == 8) {
-        // IVData : 8 bytes seeds only
-        // In this case, IVData include only 8 bytes seed. We need to calculate block offset from byte offset
-        NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
-        ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
-        ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
-    } else if (IVData && IVDataSize == 16) {
-        // Dolby Vision encrypted EL's 16 bytes IV case.
-        // IVData : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
-        // IVData includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of IVData is block offset)
-        NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0);
-        NETWORKBYTES_TO_QWORD(byteOffset, IVData, 8);
-        ctrContext.qwBlockOffset = byteOffset;
-        ctrContext.bByteOffset = 0;
-    } else  {
-        ctrContext.qwInitializationVector = 0;
-        ctrContext.qwBlockOffset = byteOffset >> 4;
-        ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf);
-    }
-
-    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext,
-                             (DRM_BYTE*)data,
-                             size);
-    if (DRM_FAILED(err))
-    {
-        return 1;
+    if (initWithLast15) {
+       // TODO: don't abuse "initWithLast15" to find out if we are in the Netflix case or not
+       // TODO: have netflix code play nice with "m_fCommit "
+/*
+  // Call commit during the decryption of the first sample.
+  if (!m_fCommit) {
+    ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL));
+    m_fCommit = TRUE;
+  } 
+  // Return clear content.
+  *f_pcbOpaqueClearContent = payloadDataSize;
+  *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
+  status = CDMi_SUCCESS;
+*/
     }
 
     return 0;
