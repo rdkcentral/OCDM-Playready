@@ -326,12 +326,12 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     return 0;
 }
 
-CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_t IVDataSize, unsigned long long byteOffset, unsigned char data[], uint32_t size, bool initWithLast15)
+CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_t f_cbIV, unsigned long long byteOffset, unsigned char payloadData[], uint32_t payloadDataSize, bool initWithLast15)
 {
     ScopedMutex2 systemLock(drmAppContextMutex_);
 
-    assert(IVDataSize > 0);
-    if(size == 0){
+    assert(f_cbIV > 0);
+    if(payloadDataSize == 0){
     	//return ERROR_NONE;
     	return 0;
     }
@@ -347,13 +347,13 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_
     } else {
         // Initialize the decryption context for Cocktail packaged
         // content. This is a no-op for AES packaged content.
-        if (size <= 15)
+        if (payloadDataSize <= 15)
         {
-            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)data, size);
+            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)payloadData, payloadDataSize);
         }
         else
         {
-            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)(data + size - 15), size);
+            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)(payloadData + payloadDataSize - 15), payloadDataSize);
         }
     }
     if (DRM_FAILED(err))
@@ -367,18 +367,18 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_
     if (initWithLast15) {
         // Netflix case
         // IV : 8 bytes seed + 8 bytes counter
-        if (IVData && IVDataSize == 8) {
-            // IVData : 8 bytes seeds only
-            // In this case, IVData include only 8 bytes seed. We need to calculate block offset from byte offset
-            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
+        if (f_pbIV && f_cbIV == 8) {
+            // f_pbIV : 8 bytes seeds only
+            // In this case, f_pbIV include only 8 bytes seed. We need to calculate block offset from byte offset
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
             ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
             ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
-        } else if (IVData && IVDataSize == 16) {
+        } else if (f_pbIV && f_cbIV == 16) {
             // Dolby Vision encrypted EL's 16 bytes IV case.
-            // IVData : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
-            // IVData includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of IVData is block offset)
-            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, IVData, 0);
-            NETWORKBYTES_TO_QWORD(byteOffset, IVData, 8);
+            // f_pbIV : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
+            // f_pbIV includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of f_pbIV is block offset)
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0);
+            NETWORKBYTES_TO_QWORD(byteOffset, f_pbIV, 8);
             ctrContext.qwBlockOffset = byteOffset;
             ctrContext.bByteOffset = 0;
         } else  {
@@ -390,17 +390,17 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* IVData, uint32_
        // Regular case
        // FIXME: IV bytes need to be swapped ???
        // TODO: is this for-loop the same as "NETWORKBYTES_TO_QWORD"?
-       unsigned char * ivDataNonConst = const_cast<unsigned char *>(IVData); // TODO: this is ugly
-       for (uint32_t i = 0; i < IVDataSize / 2; i++) {
+       unsigned char * ivDataNonConst = const_cast<unsigned char *>(f_pbIV); // TODO: this is ugly
+       for (uint32_t i = 0; i < f_cbIV / 2; i++) {
           unsigned char temp = ivDataNonConst[i];
-          ivDataNonConst[i] = ivDataNonConst[IVDataSize - i - 1];
-          ivDataNonConst[IVDataSize - i - 1] = temp;
+          ivDataNonConst[i] = ivDataNonConst[f_cbIV - i - 1];
+          ivDataNonConst[f_cbIV - i - 1] = temp;
        }
 
-       MEMCPY(&ctrContext.qwInitializationVector, IVData, IVDataSize);
+       MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
     }
 
-    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext, (DRM_BYTE*)data, size);
+    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
     if (DRM_FAILED(err))
     {
         return 1;
