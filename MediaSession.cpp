@@ -190,7 +190,11 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_pbChallenge(nullptr)
     , m_cbChallenge(0)
     , m_pchSilentURL(nullptr) 
-    , m_piCallback(nullptr) {
+    , m_piCallback(nullptr)
+    , m_decryptInited(false) {
+    
+    m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
+    
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_ID oSessionID;
 
@@ -275,6 +279,10 @@ MediaKeySession::~MediaKeySession(void) {
   SAFE_OEM_FREE(m_poAppContext);
 
   m_eKeyState = KEY_CLOSED;
+  
+  delete m_oDecryptContext;
+  m_oDecryptContext = nullptr;
+  
   printf("Destructing PlayReady Session [%p]\n", this);
 }
 
@@ -423,7 +431,7 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
                         NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
                         NULL,
-                        &m_oDecryptContext));
+                        m_oDecryptContext));
 
   m_eKeyState = KEY_READY;
 

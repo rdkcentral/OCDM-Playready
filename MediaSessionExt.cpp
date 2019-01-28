@@ -42,7 +42,10 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
 
 MediaKeySession::MediaKeySession(uint32_t sessionId, const char contentId[], uint32_t contentIdLength, LicenseTypeExt licenseType, const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext)
    : m_poAppContext(poAppContext)
+   , m_decryptInited(false)
 {
+    m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
+
 	// "contentId" often starts with an '\0', so just assigning it to the string will not work, we need to do something like this
 	std::string contentIdString(contentId, contentIdLength);
 
@@ -213,15 +216,13 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
         return 1;
     }
+    
+    if (m_decryptInited) {
+        return 0;
+    }
 
      //Create a decrypt context and bind it with the drm context.
-    if (decryptContext_.get()){
-        // we already have initialized decrypt context.
-        // TODO: is this a situation we need to log?
-    	return 0;
-    }
-    decryptContext_.reset(new DRM_DECRYPT_CONTEXT);
-    memset(decryptContext_.get(), 0, sizeof(DRM_DECRYPT_CONTEXT));
+    memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
 
     if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
         err = Drm_Reader_Bind_Netflix(m_poAppContext,
@@ -229,7 +230,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
                                       sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
 									  &opencdm_output_levels_callback, &levels_,
                                       &mSecureStopId[0],
-                                      decryptContext_.get());
+                                      m_oDecryptContext);
     } else {
     	fprintf(stderr, "Error: secure stop ID is not valid\n");
     	return 1;
@@ -248,6 +249,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         return 1;
     }
     m_fCommit = TRUE;
+    m_decryptInited = true;
 
     return 0;
 }
@@ -337,24 +339,24 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_
     	return 0;
     }
 
-    if (!decryptContext_.get()) {
+    if (!m_oDecryptContext) {
     	fprintf(stderr, "Error: no decrypt context (yet?)\n");
     	return 1;
     }
     
     DRM_RESULT err = DRM_SUCCESS;
     if (!initWithLast15) {
-        err = Drm_Reader_InitDecrypt(&m_oDecryptContext, NULL, 0);
+        err = Drm_Reader_InitDecrypt(m_oDecryptContext, NULL, 0);
     } else {
         // Initialize the decryption context for Cocktail packaged
         // content. This is a no-op for AES packaged content.
         if (payloadDataSize <= 15)
         {
-            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)payloadData, payloadDataSize);
+            err = Drm_Reader_InitDecrypt(m_oDecryptContext, (DRM_BYTE*)payloadData, payloadDataSize);
         }
         else
         {
-            err = Drm_Reader_InitDecrypt(decryptContext_.get(), (DRM_BYTE*)(payloadData + payloadDataSize - 15), payloadDataSize);
+            err = Drm_Reader_InitDecrypt(m_oDecryptContext, (DRM_BYTE*)(payloadData + payloadDataSize - 15), payloadDataSize);
         }
     }
     if (DRM_FAILED(err))
@@ -401,7 +403,7 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_
        MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
     }
 
-    err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
+    err = Drm_Reader_Decrypt(m_oDecryptContext, &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
@@ -414,15 +416,12 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_
         m_fCommit = TRUE;
     }
 
-    if (initWithLast15) {
-       // TODO: don't abuse "initWithLast15" to find out if we are in the Netflix case or not
 /*
   // Return clear content.
   *f_pcbOpaqueClearContent = payloadDataSize;
   *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
   status = CDMi_SUCCESS;
 */
-    }
 
     return 0;
 }
