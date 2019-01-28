@@ -462,6 +462,7 @@ CDMi_RESULT MediaKeySession::Remove(void) {
 
 CDMi_RESULT MediaKeySession::Close(void) {}
 
+/*
 CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t *f_pbSessionKey,
     uint32_t f_cbSessionKey,
@@ -473,8 +474,9 @@ CDMi_RESULT MediaKeySession::Decrypt(
     uint32_t payloadDataSize,
     uint32_t *f_pcbOpaqueClearContent,
     uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t /* keyIdLength */,
-    const uint8_t* /* keyId */)
+    const uint8_t, // keyIdLength
+    const uint8_t* // keyId
+    )
 {
   CDMi_RESULT status = CDMi_S_FALSE;
   DRM_AES_COUNTER_MODE_CONTEXT oAESContext = {0};
@@ -569,7 +571,114 @@ ErrorExit:
   }
   return status;
 }
+*/
 
+CDMi_RESULT MediaKeySession::Decrypt(
+    const uint8_t *f_pbSessionKey,
+    uint32_t f_cbSessionKey,
+    const uint32_t *f_pdwSubSampleMapping,
+    uint32_t f_cdwSubSampleMapping,
+    const uint8_t *f_pbIV,
+    uint32_t f_cbIV,
+    const uint8_t *payloadData,
+    uint32_t payloadDataSize,
+    uint32_t *f_pcbOpaqueClearContent,
+    uint8_t **f_ppbOpaqueClearContent,
+    const uint8_t, // keyIdLength
+    const uint8_t*, // keyId
+    unsigned long long byteOffset,
+    bool initWithLast15)
+{
+    assert(f_cbIV > 0);
+    if(payloadDataSize == 0){
+    	//return ERROR_NONE;
+    	return 0;
+    }
+
+    if (!m_oDecryptContext) {
+    	fprintf(stderr, "Error: no decrypt context (yet?)\n");
+    	return 1;
+    }
+    
+    DRM_RESULT err = DRM_SUCCESS;
+    if (!initWithLast15) {
+        err = Drm_Reader_InitDecrypt(m_oDecryptContext, NULL, 0);
+    } else {
+        // Initialize the decryption context for Cocktail packaged
+        // content. This is a no-op for AES packaged content.
+        if (payloadDataSize <= 15)
+        {
+            err = Drm_Reader_InitDecrypt(m_oDecryptContext, (DRM_BYTE*)payloadData, payloadDataSize);
+        }
+        else
+        {
+            err = Drm_Reader_InitDecrypt(m_oDecryptContext, (DRM_BYTE*)(payloadData + payloadDataSize - 15), payloadDataSize);
+        }
+    }
+    if (DRM_FAILED(err))
+    {
+        fprintf(stderr, "Failed to init decrypt\n");
+        return 1;
+    }
+
+    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
+    // TODO: can be done in another way (now abusing "initWithLast15" variable)
+    if (initWithLast15) {
+        // Netflix case
+        // IV : 8 bytes seed + 8 bytes counter
+        if (f_pbIV && f_cbIV == 8) {
+            // f_pbIV : 8 bytes seeds only
+            // In this case, f_pbIV include only 8 bytes seed. We need to calculate block offset from byte offset
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
+            ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
+            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
+        } else if (f_pbIV && f_cbIV == 16) {
+            // Dolby Vision encrypted EL's 16 bytes IV case.
+            // f_pbIV : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
+            // f_pbIV includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of f_pbIV is block offset)
+            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0);
+            NETWORKBYTES_TO_QWORD(byteOffset, f_pbIV, 8);
+            ctrContext.qwBlockOffset = byteOffset;
+            ctrContext.bByteOffset = 0;
+        } else  {
+            ctrContext.qwInitializationVector = 0;
+            ctrContext.qwBlockOffset = byteOffset >> 4;
+            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf);
+        }
+    } else {
+       // Regular case
+       // FIXME: IV bytes need to be swapped ???
+       // TODO: is this for-loop the same as "NETWORKBYTES_TO_QWORD"?
+       unsigned char * ivDataNonConst = const_cast<unsigned char *>(f_pbIV); // TODO: this is ugly
+       for (uint32_t i = 0; i < f_cbIV / 2; i++) {
+          unsigned char temp = ivDataNonConst[i];
+          ivDataNonConst[i] = ivDataNonConst[f_cbIV - i - 1];
+          ivDataNonConst[f_cbIV - i - 1] = temp;
+       }
+
+       MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
+    }
+
+    err = Drm_Reader_Decrypt(m_oDecryptContext, &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
+    if (DRM_FAILED(err))
+    {
+        fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
+        return 1;
+    }
+
+    // Call commit during the decryption of the first sample.
+    if (!m_fCommit) {
+        //err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
+        err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL); // TODO: pass along user data
+        m_fCommit = TRUE;
+    }
+
+    // Return clear content.
+    *f_pcbOpaqueClearContent = payloadDataSize;
+    *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
+
+    return CDMi_SUCCESS;
+}
 
 CDMi_RESULT MediaKeySession::ReleaseClearContent(
     const uint8_t *f_pbSessionKey,
