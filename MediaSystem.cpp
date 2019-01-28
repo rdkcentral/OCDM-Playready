@@ -27,8 +27,6 @@
 
 using namespace std;
 
-std::shared_ptr<DRM_APP_CONTEXT> appContext_;
-
 extern DRM_CONST_STRING g_dstrDrmPath;
 
 WPEFramework::Core::CriticalSection drmAppContextMutex_;
@@ -63,7 +61,8 @@ private:
     PlayReady& operator= (const PlayReady&) = delete;
 
 public:
-    PlayReady() {
+    PlayReady() :
+       m_poAppContext(nullptr) {
     }
 
     ~PlayReady(void) {
@@ -108,7 +107,7 @@ public:
        ScopedMutex2 lock(drmAppContextMutex_);
 
        DRM_UINT64 utctime64;
-       DRM_RESULT err = Drm_Clock_GetSystemTime(appContext_.get(), &utctime64);
+       DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext, &utctime64);
        if (err != DRM_SUCCESS) {
        	fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
            // return invalid time
@@ -131,7 +130,7 @@ public:
             IMediaKeySessionExt** session) override
 	{
 
-        *session = new CDMi::MediaKeySession(sessionId, contentId, contentIdLength, licenseType, drmHeader, drmHeaderLength);
+        *session = new CDMi::MediaKeySession(sessionId, contentId, contentIdLength, licenseType, drmHeader, drmHeaderLength, m_poAppContext);
 
         fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
 
@@ -157,7 +156,7 @@ public:
         ScopedMutex2 lock(drmAppContextMutex_);
 
         uint32_t ldlLimit = 0;
-        DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(appContext_.get(), &ldlLimit);
+        DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext, &ldlLimit);
         if (err != DRM_SUCCESS) {
             fprintf(stderr, "Error: Drm_LicenseAcq_GetLdlSessionsLimit_Netflix returned 0x%lX\n", (long)err);
             return 0;
@@ -199,7 +198,7 @@ public:
         memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
 
         // commit it
-        DRM_RESULT err = Drm_CommitSecureStop(appContext_.get(), uuid);
+        DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext, uuid);
         if (err != DRM_SUCCESS)
         {
         	// TODO: This call now fails sometimes with 0x80004005 (DRM_E_FAIL)
@@ -216,7 +215,10 @@ public:
     	cerr << "CreateSystemNetflix, storeLocation: " << storeLocation << endl;
 
     	// Clear DRM app context.
-    	appContext_.reset();
+    	if (m_poAppContext != nullptr) {
+    	    delete m_poAppContext;
+    	}
+    	m_poAppContext = nullptr;
 
         std::string rdir(readDir);
 
@@ -253,30 +255,39 @@ public:
         err = Drm_Platform_Initialize();
         if(DRM_FAILED(err))
         {
-        	appContext_.reset();
+        	if (m_poAppContext != nullptr) {
+        	   delete m_poAppContext;
+        	}
+        	m_poAppContext = nullptr;
             fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
             //return (OpenCDMError)ERROR_FAILED_TO_INIT;
             return 1;
         }
+        
+        if (m_poAppContext != nullptr) {
+           delete m_poAppContext;
+        }
 
         // TODO: move app context to OpenCDMAccessor
-        appContext_.reset(new DRM_APP_CONTEXT);
-        memset(appContext_.get(), 0, sizeof(DRM_APP_CONTEXT));
-        err  = Drm_Initialize(appContext_.get(), NULL,
+        m_poAppContext = new DRM_APP_CONTEXT;
+        memset(m_poAppContext, 0, sizeof(DRM_APP_CONTEXT));
+        err  = Drm_Initialize(m_poAppContext, NULL,
                               appContextOpaqueBuffer_,
                               MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
                               &drmStore_);
         if(DRM_FAILED(err)) {
-        	appContext_.reset();
+        	delete m_poAppContext;
+        	m_poAppContext = nullptr;
             fprintf(stderr, "Error in Drm_Initialize: 0x%08lX\n", err);
             //return (OpenCDMError)ERROR_FAILED_TO_INIT;
             return 1;
         }
 
-        err = Drm_Revocation_SetBuffer(appContext_.get(), pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
+        err = Drm_Revocation_SetBuffer(m_poAppContext, pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
         if(DRM_FAILED(err))
         {
-            appContext_.reset();
+            delete m_poAppContext;
+            m_poAppContext = nullptr;
             fprintf(stderr, "Error in Drm_Revocation_SetBuffer: 0x%08lX\n", err);
             //return (OpenCDMError)ERROR_FAILED_TO_INIT;
             return 1;
@@ -290,35 +301,38 @@ public:
     {
         ScopedMutex2 lock(drmAppContextMutex_);
 
-        if(!appContext_.get() ) {
+        if(!m_poAppContext) {
         	fprintf(stderr, "Error, no app context yet\n");
             return 1;
         }
 
         DRM_RESULT err;
-        err = Drm_Reader_Commit(appContext_.get(), NULL, NULL);
+        err = Drm_Reader_Commit(m_poAppContext, NULL, NULL);
         if(DRM_FAILED(err)) {
         	fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
         }
 
-        err = Drm_StoreMgmt_CleanupStore(appContext_.get(),
+        err = Drm_StoreMgmt_CleanupStore(m_poAppContext,
                                          DRM_STORE_CLEANUP_DELETE_EXPIRED_LICENSES |
                                          DRM_STORE_CLEANUP_DELETE_REMOVAL_DATE_LICENSES,
                                          NULL, 0, NULL);
         if(DRM_FAILED(err))
         {
         	fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
-        	appContext_.reset();
+        	delete m_poAppContext;
+        	m_poAppContext = nullptr;
         }
         // Uninitialize drm context
-        Drm_Uninitialize(appContext_.get());
-        appContext_.reset();
+        Drm_Uninitialize(m_poAppContext);
+        delete m_poAppContext;
+        m_poAppContext = nullptr;
 
         // Unitialize platform
         err = Drm_Platform_Uninitialize();
         if(DRM_FAILED(err))
         {
-        	appContext_.reset();
+        	fprintf(stderr, "Failed to call Drm_Platform_Unitialize\n");
+        	return 1;
         }
 
         return 0;
@@ -369,6 +383,7 @@ private:
 
 	DRM_BYTE *appContextOpaqueBuffer_ = nullptr;
 	DRM_BYTE *pbRevocationBuffer_ = nullptr;
+	DRM_APP_CONTEXT * m_poAppContext; // TODO: should be an std::shared ptr?
 };
 
 static SystemFactoryType<PlayReady> g_instance({"video/x-h264", "audio/mpeg"});

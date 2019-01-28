@@ -8,7 +8,6 @@
 using namespace std;
 
 extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
-extern std::shared_ptr<DRM_APP_CONTEXT> appContext_;
 
 // The rights we want to request.
 const DRM_WCHAR PLAY[] = { ONE_WCHAR('P', '\0'),
@@ -41,7 +40,8 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
 }
 
 
-MediaKeySession::MediaKeySession(uint32_t sessionId, const char contentId[], uint32_t contentIdLength, LicenseTypeExt licenseType, const uint8_t drmHeader[], uint32_t drmHeaderLength)
+MediaKeySession::MediaKeySession(uint32_t sessionId, const char contentId[], uint32_t contentIdLength, LicenseTypeExt licenseType, const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext)
+   : m_poAppContext(poAppContext)
 {
 	// "contentId" often starts with an '\0', so just assigning it to the string will not work, we need to do something like this
 	std::string contentIdString(contentId, contentIdLength);
@@ -148,14 +148,14 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     DRM_RESULT err;
 
     // reinitialze DRM_APP_CONTEXT and set DRM header for current session
-	err = Drm_Reinitialize(appContext_.get());
+	err = Drm_Reinitialize(m_poAppContext);
 	if(DRM_FAILED(err))
 	{
 		fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
 		return 1;
 	}
 
-    err = Drm_Content_SetProperty(appContext_.get(),
+    err = Drm_Content_SetProperty(m_poAppContext,
                                   DRM_CSP_AUTODETECT_HEADER,
                                   &mDrmHeader[0],
 								  mDrmHeader.size());
@@ -167,7 +167,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 
     mLicenseResponse->clear();
 
-    err = Drm_LicenseAcq_ProcessResponse_Netflix(appContext_.get(),
+    err = Drm_LicenseAcq_ProcessResponse_Netflix(m_poAppContext,
                                                  DRM_PROCESS_LIC_RESPONSE_NO_FLAGS,
                                                  NULL, NULL,
                                                  &localLicenseData[0],
@@ -197,14 +197,14 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
 
      // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
      // simulataneous decryption support
-	err = Drm_Reinitialize(appContext_.get());
+	err = Drm_Reinitialize(m_poAppContext);
 	if(DRM_FAILED(err))
 	{
 		fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
 		return 1;
 	}
 
-    err = Drm_Content_SetProperty(appContext_.get(),
+    err = Drm_Content_SetProperty(m_poAppContext,
                                   DRM_CSP_AUTODETECT_HEADER,
                                   &mDrmHeader[0],
 								  mDrmHeader.size());
@@ -224,7 +224,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
     memset(decryptContext_.get(), 0, sizeof(DRM_DECRYPT_CONTEXT));
 
     if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
-        err = Drm_Reader_Bind_Netflix(appContext_.get(),
+        err = Drm_Reader_Bind_Netflix(m_poAppContext,
                                       RIGHTS,
                                       sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
 									  &opencdm_output_levels_callback, &levels_,
@@ -241,7 +241,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         return 1;
     }
 
-    err = Drm_Reader_Commit(appContext_.get(), &opencdm_output_levels_callback, &levels_);
+    err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
@@ -266,10 +266,10 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     }
 
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
-    ASSERT(appContext_.get() != nullptr);
+    ASSERT(m_poAppContext != nullptr);
 
 	// reinitialize DRM_APP_CONTEXT - this is limitation of PlayReady 2.x
-	err = Drm_Reinitialize(appContext_.get());
+	err = Drm_Reinitialize(m_poAppContext);
 	if(DRM_FAILED(err))
 	{
 		fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
@@ -279,7 +279,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     /*
      * Set the drm context's drm header property to the systemSpecificData.
      */
-    err = Drm_Content_SetProperty(appContext_.get(),
+    err = Drm_Content_SetProperty(m_poAppContext,
                                   DRM_CSP_AUTODETECT_HEADER,
                                   &mDrmHeader[0],
 								  mDrmHeader.size());
@@ -301,7 +301,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     	passedChallenge = nullptr;
     }
 
-    err = Drm_LicenseAcq_GenerateChallenge_Netflix(appContext_.get(),
+    err = Drm_LicenseAcq_GenerateChallenge_Netflix(m_poAppContext,
                                                    RIGHTS,
                                                    sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
                                                    NULL,
@@ -410,7 +410,7 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_
 
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
-        err = Drm_Reader_Commit(appContext_.get(), &opencdm_output_levels_callback, &levels_);
+        err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
         m_fCommit = TRUE;
     }
 
