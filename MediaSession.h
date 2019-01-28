@@ -193,7 +193,6 @@ private:
     DRM_BYTE *m_pbRevocationBuffer;
     KeyState m_eKeyState;
     DRM_CHAR m_rgchSessionID[CCH_BASE64_EQUIV(SIZEOF(DRM_ID)) + 1];
-    DRM_BOOL m_fCommit;
       
     DRM_BYTE *m_pbChallenge;
     DRM_DWORD m_cbChallenge;
@@ -215,7 +214,9 @@ private:
     std::unique_ptr<LicenseResponse2> mLicenseResponse;
     std::vector<uint8_t> mSecureStopId;
     PlayLevels2 levels_;
-   
+
+protected:
+    DRM_BOOL m_fCommit;
 };
 
 } // namespace CDMi

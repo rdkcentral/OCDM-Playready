@@ -247,6 +247,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
         return 1;
     }
+    m_fCommit = TRUE;
 
     return 0;
 }
@@ -403,18 +404,19 @@ CDMi_RESULT MediaKeySession::DecryptNetflix(const unsigned char* f_pbIV, uint32_
     err = Drm_Reader_Decrypt(decryptContext_.get(), &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
     if (DRM_FAILED(err))
     {
+        fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
         return 1;
+    }
+
+    // Call commit during the decryption of the first sample.
+    if (!m_fCommit) {
+        err = Drm_Reader_Commit(appContext_.get(), &opencdm_output_levels_callback, &levels_);
+        m_fCommit = TRUE;
     }
 
     if (initWithLast15) {
        // TODO: don't abuse "initWithLast15" to find out if we are in the Netflix case or not
-       // TODO: have netflix code play nice with "m_fCommit "
 /*
-  // Call commit during the decryption of the first sample.
-  if (!m_fCommit) {
-    ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL));
-    m_fCommit = TRUE;
-  } 
   // Return clear content.
   *f_pcbOpaqueClearContent = payloadDataSize;
   *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
