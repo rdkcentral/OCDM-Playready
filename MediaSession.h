@@ -19,6 +19,14 @@
 
 #include "cdmi.h"
 
+#ifndef min
+#define min min
+#endif
+
+#ifndef max
+#define max max
+#endif
+
 #include <drmbuild_oem.h>
 #include <drmcommon.h>
 #include <drmmanager.h>
