@@ -106,10 +106,7 @@ public:
     MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData);
 
     // TODO: introduce MediaKeySessionExt?
-    MediaKeySession(uint32_t sessionId,
-            const char contentId[],
-            uint32_t contentIdLength,
-            LicenseTypeExt licenseType,
+    MediaKeySession(
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
             DRM_APP_CONTEXT * poAppContext);

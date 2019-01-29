@@ -40,19 +40,13 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
 }
 
 
-MediaKeySession::MediaKeySession(uint32_t sessionId, const char contentId[], uint32_t contentIdLength, LicenseTypeExt licenseType, const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext)
+MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext)
    : m_poAppContext(poAppContext)
    , m_decryptInited(false)
 {
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
 
-	// "contentId" often starts with an '\0', so just assigning it to the string will not work, we need to do something like this
-	std::string contentIdString(contentId, contentIdLength);
-
 	mLicenseResponse = std::unique_ptr<LicenseResponse2>(new LicenseResponse2());
-	mContentId = contentIdString;
-	mLicenseType = (CDMi::OcdmLicenseType)licenseType; // TODO: convert
-	mSessionId = sessionId;
 	mSessionState = OcdmSessionState::Ocdm_InvalidState;
 	mSecureStopId.clear();
 

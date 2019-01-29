@@ -121,16 +121,13 @@ public:
 
     }
 
-    CDMi_RESULT CreateMediaKeySessionExt(uint32_t sessionId,
-            const char contentId[],
-            uint32_t contentIdLength,
-            LicenseTypeExt licenseType,
+    CDMi_RESULT CreateMediaKeySessionExt(
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
             IMediaKeySessionExt** session) override
 	{
 
-        *session = new CDMi::MediaKeySession(sessionId, contentId, contentIdLength, licenseType, drmHeader, drmHeaderLength, m_poAppContext);
+        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext);
 
         fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
 
