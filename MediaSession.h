@@ -20,17 +20,7 @@
 #include "cdmi.h"
 
 #include <drmbuild_oem.h>
-#ifdef PR_3_3
-#include <drmbytemanip.h>
-#if defined( min )
-    #undef min(a,b)
-#endif /* defined( min ) */
-#if defined( max )
-    #undef max(a,b)
-#endif /* defined( max ) */
-#else /* PR_3_3 */
 #include <drmcommon.h>
-#endif /* PR_3_3 */
 #include <drmmanager.h>
 #include <drmmathsafe.h>
 #include <drmtypes.h>
@@ -38,6 +28,11 @@
 
 #undef __in
 #undef __out
+
+#ifndef SIZEOF
+#define PR_3_3
+#define SIZEOF sizeof
+#endif
 
 namespace CDMi {
 
@@ -124,11 +119,7 @@ private:
 
     DRM_BYTE *m_pbRevocationBuffer;
     KeyState m_eKeyState;
-#ifdef PR_3_3
-    DRM_CHAR m_rgchSessionID[CCH_BASE64_EQUIV(sizeof(DRM_ID)) + 1];
-#else
     DRM_CHAR m_rgchSessionID[CCH_BASE64_EQUIV(SIZEOF(DRM_ID)) + 1];
-#endif
     DRM_BOOL m_fCommit;
       
     DRM_BYTE *m_pbChallenge;

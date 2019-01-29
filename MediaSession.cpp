@@ -27,30 +27,41 @@
 
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
+#ifdef DRM_WCHAR_CAST
+#define WCHAR_CAST DRM_WCHAR_CAST
+#endif
+
+#ifdef DRM_CREATE_DRM_STRING
+#define CREATE_DRM_STRING DRM_CREATE_DRM_STRING
+#endif
+
+#ifdef DRM_EMPTY_DRM_STRING
+#define EMPTY_DRM_STRING DRM_EMPTY_DRM_STRING
+#endif
+
+#ifdef DRM_NO_OF
+#define NO_OF DRM_NO_OF
+#endif
+
 using namespace std;
 
 namespace CDMi {
 
 // The default location of CDM DRM store.
 // /tmp/drmstore.dat
-#ifdef PR_3_3
-const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {DRM_WCHAR_CAST('/'), DRM_WCHAR_CAST('t'), DRM_WCHAR_CAST('m'), DRM_WCHAR_CAST('p'), DRM_WCHAR_CAST('/'),
-                                            DRM_WCHAR_CAST('d'), DRM_WCHAR_CAST('r'), DRM_WCHAR_CAST('m'), DRM_WCHAR_CAST('s'), DRM_WCHAR_CAST('t'),
-                                            DRM_WCHAR_CAST('o'), DRM_WCHAR_CAST('r'), DRM_WCHAR_CAST('e'), DRM_WCHAR_CAST('.'), DRM_WCHAR_CAST('d'),
-                                            DRM_WCHAR_CAST('a'), DRM_WCHAR_CAST('t'), DRM_WCHAR_CAST('\0')};
 
-const DRM_CONST_STRING g_dstrCDMDrmStoreName = DRM_CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
-#else
 const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {WCHAR_CAST('/'), WCHAR_CAST('t'), WCHAR_CAST('m'), WCHAR_CAST('p'), WCHAR_CAST('/'),
                                             WCHAR_CAST('d'), WCHAR_CAST('r'), WCHAR_CAST('m'), WCHAR_CAST('s'), WCHAR_CAST('t'),
                                             WCHAR_CAST('o'), WCHAR_CAST('r'), WCHAR_CAST('e'), WCHAR_CAST('.'), WCHAR_CAST('d'),
                                             WCHAR_CAST('a'), WCHAR_CAST('t'), WCHAR_CAST('\0')};
 
 const DRM_CONST_STRING g_dstrCDMDrmStoreName = CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
-#endif
 
+#ifdef PR_3_3
+const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrDRM_RIGHT_PLAYBACK};
+#else
 const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrWMDRM_RIGHT_PLAYBACK};
-
+#endif
 
 // Parse out the first PlayReady initialization header found in the concatenated
 // block of headers in _initData_.
@@ -184,11 +195,8 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_ID oSessionID;
 
-#ifdef PR_3_3
-  DRM_DWORD cchEncodedSessionID = sizeof(m_rgchSessionID);
-#else
   DRM_DWORD cchEncodedSessionID = SIZEOF(m_rgchSessionID);
-#endif
+
   // FIXME: Change the interface of this method? Not sure why the win32 bondage is still so popular.
   std::string initData(reinterpret_cast<const char*>(f_pbInitData), f_cbInitData);
   std::string playreadyInitData;
@@ -198,11 +206,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
   ChkMem(m_pbOpaqueBuffer = (DRM_BYTE *)Oem_MemAlloc(MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE));
   m_cbOpaqueBuffer = MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE;
 
-#ifdef PR_3_3
-  ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(sizeof(DRM_APP_CONTEXT)));
-#else
   ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(SIZEOF(DRM_APP_CONTEXT)));
-#endif
 
   // Initialize DRM app context.
   ChkDR(Drm_Initialize(m_poAppContext,
@@ -219,18 +223,6 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
                                    REVOCATION_BUFFER_SIZE));
   }
 
-#ifdef PR_3_3
-  // Generate a random media session ID.
-  ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, sizeof(oSessionID)));
-  ZEROMEM(m_rgchSessionID, sizeof(m_rgchSessionID));
-
-  // Store the generated media session ID in base64 encoded form.
-  ChkDR(DRM_B64_EncodeA((DRM_BYTE *)&oSessionID,
-                        sizeof(oSessionID),
-                        m_rgchSessionID,
-                        &cchEncodedSessionID,
-                        0));
-#else
   // Generate a random media session ID.
   ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
   ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
@@ -241,8 +233,6 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
                         m_rgchSessionID,
                         &cchEncodedSessionID,
                         0));
-#endif
-
 
   // The current state MUST be KEY_INIT otherwise error out.
   ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
@@ -319,11 +309,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
     
   DRM_RESULT dr = DRM_SUCCESS; 
   DRM_DWORD cchSilentURL = 0;
-#ifdef PR_3_3
-  DRM_ANSI_STRING dastrCustomData = DRM_EMPTY_DRM_STRING;
-#else
   DRM_ANSI_STRING dastrCustomData = EMPTY_DRM_STRING;
-#endif
 
 /* PRv3.3 support */
 #ifdef PR_3_3
@@ -439,21 +425,12 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
                                        m_cbKeyMessageResponse,
                                        &oLicenseResponse));
 
-#ifdef PR_3_3
-  ChkDR(Drm_Reader_Bind(m_poAppContext,
-                        g_rgpdstrRights,
-                        DRM_NO_OF(g_rgpdstrRights),
-                        _PolicyCallback,
-                        NULL,
-                        &m_oDecryptContext));
-#else
   ChkDR(Drm_Reader_Bind(m_poAppContext,
                         g_rgpdstrRights,
                         NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
                         NULL,
                         &m_oDecryptContext));
-#endif
 
   m_eKeyState = KEY_READY;
 
@@ -535,7 +512,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
         rgdwMappings[0] = 0;
         rgdwMappings[1] = payloadDataSize;
         f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-        f_cdwSubSampleMapping = DRM_NO_OF(rgdwMappings);
+        f_cdwSubSampleMapping = NO_OF(rgdwMappings);
     }
 
     ChkDR(Drm_Reader_DecryptOpaque(
