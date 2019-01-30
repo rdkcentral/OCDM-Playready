@@ -19,28 +19,25 @@
 
 #include "cdmi.h"
 
-#ifndef min
-#define min min
-#endif
-
-#ifndef max
-#define max max
-#endif
-
 #include <drmbuild_oem.h>
-#include <drmcommon.h>
 #include <drmmanager.h>
 #include <drmmathsafe.h>
 #include <drmtypes.h>
-#include <drmerr.h>
-
-#undef __in
-#undef __out
-
 #ifndef SIZEOF
 #define PR_3_3
 #define SIZEOF sizeof
+#include <drmcrt.h>
+#undef min
+#undef max
+#include <drmbytemanip.h>
+#else
+#include <drmcommon.h>
 #endif
+#include <drmerr.h>
+#include <drmerror.h>
+
+#undef __in
+#undef __out
 
 namespace CDMi {
 

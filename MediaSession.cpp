@@ -23,7 +23,6 @@
 #include <string.h>
 #include <vector>
 #include <sys/utsname.h>
-#include <drmerror.h>
 
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
