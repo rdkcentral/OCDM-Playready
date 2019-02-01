@@ -586,7 +586,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
     uint8_t **f_ppbOpaqueClearContent,
     const uint8_t, // keyIdLength
     const uint8_t*, // keyId
-    unsigned long long byteOffset,
     bool initWithLast15)
 {
     assert(f_cbIV > 0);
