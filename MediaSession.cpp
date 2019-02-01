@@ -625,26 +625,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     // TODO: can be done in another way (now abusing "initWithLast15" variable)
     if (initWithLast15) {
         // Netflix case
-        // IV : 8 bytes seed + 8 bytes counter
-        if (f_pbIV && f_cbIV == 8) {
-            // f_pbIV : 8 bytes seeds only
-            // In this case, f_pbIV include only 8 bytes seed. We need to calculate block offset from byte offset
-            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0); // qwInitializeVector is represent upper 8 bytes of 16bytes IV.
-            ctrContext.qwBlockOffset = byteOffset >> 4; // remaining 8 bytes block offset for IV calculated for 16 byte unit(>>4) AES block
-            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf); // byte offset within 16byte block
-        } else if (f_pbIV && f_cbIV == 16) {
-            // Dolby Vision encrypted EL's 16 bytes IV case.
-            // f_pbIV : 8 bytes seed + 8 bytes counter which is next block offset from last block offset of BL
-            // f_pbIV includes both 8 bytes seed and 8bytes block offset already in this case. (lower 8 bytes of f_pbIV is block offset)
-            NETWORKBYTES_TO_QWORD(ctrContext.qwInitializationVector, f_pbIV, 0);
-            NETWORKBYTES_TO_QWORD(byteOffset, f_pbIV, 8);
-            ctrContext.qwBlockOffset = byteOffset;
-            ctrContext.bByteOffset = 0;
-        } else  {
-            ctrContext.qwInitializationVector = 0;
-            ctrContext.qwBlockOffset = byteOffset >> 4;
-            ctrContext.bByteOffset = (DRM_BYTE)(byteOffset & 0xf);
-        }
+       memcpy(&ctrContext, f_pbIV, sizeof(ctrContext));
     } else {
        // Regular case
        // FIXME: IV bytes need to be swapped ???
