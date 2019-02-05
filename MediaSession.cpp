@@ -318,14 +318,6 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                         _PolicyCallback,
                         NULL,
                         &m_oDecryptContext);
-
-  if (dr == DRM_SUCCESS)
-  {
-      m_eKeyState = KEY_READY;
-      if (m_piCallback)
-        m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
-      return true;
-  }
 #endif
 
   // FIXME :  Check add case Play rights already acquired
