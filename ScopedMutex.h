@@ -6,16 +6,16 @@
 //       If not, maybe copy? If yes, replace this one with the original one.
 // TODO: This is just a simpler version of Netflix's ScopedMutex (worry about license?)
 // TODO: rename
-class ScopedMutex2
+class ScopedMutex
 {
 public:
-    explicit ScopedMutex2(WPEFramework::Core::CriticalSection& lock) : mLock(lock), mLocked(false)
+    explicit ScopedMutex(WPEFramework::Core::CriticalSection& lock) : mLock(lock), mLocked(false)
     {
         relock();
     }
 
     /** Release the lock. */
-    ~ScopedMutex2()
+    ~ScopedMutex()
     {
         unlock();
     }

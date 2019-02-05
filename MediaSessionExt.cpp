@@ -3,7 +3,7 @@
 #include <iostream>
 #include <stdio.h>
 
-#include "ScopedMutex2.h"
+#include "ScopedMutex.h"
 
 using namespace std;
 
@@ -129,7 +129,7 @@ CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t dr
 CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId)
 {
     // open scope for DRM_APP_CONTEXT mutex
-    ScopedMutex2 systemLock(drmAppContextMutex_);
+    ScopedMutex systemLock(drmAppContextMutex_);
 
     // Make sure PlayReady still expects a 16 byte array.
     // TODO: static assert?
@@ -188,7 +188,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
 {
     // open scope for DRM_APP_CONTEXT mutex
-    ScopedMutex2 systemLock(drmAppContextMutex_);
+    ScopedMutex systemLock(drmAppContextMutex_);
 
     DRM_RESULT err;
 
@@ -253,7 +253,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
 	// TODO: this is more or less a copy paste from Netflix, so deal with C-style casting and use or NULL instead of nullptr.
     DRM_RESULT err;
 
-    ScopedMutex2 systemLock(drmAppContextMutex_);
+    ScopedMutex systemLock(drmAppContextMutex_);
 
     // sanity check for drm header
     if (mDrmHeader.size() == 0) {

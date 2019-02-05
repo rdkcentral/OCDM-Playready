@@ -23,7 +23,7 @@
 #include <interfaces/IDRM.h>
 #include "MediaSession.h"
 
-#include "ScopedMutex2.h"
+#include "ScopedMutex.h"
 
 using namespace std;
 
@@ -104,7 +104,7 @@ public:
        fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
        //return 46;
 
-       ScopedMutex2 lock(drmAppContextMutex_);
+       ScopedMutex lock(drmAppContextMutex_);
 
        DRM_UINT64 utctime64;
        DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext, &utctime64);
@@ -150,7 +150,7 @@ public:
 
     uint32_t GetLdlSessionLimit() const override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
         uint32_t ldlLimit = 0;
         DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext, &ldlLimit);
@@ -164,7 +164,7 @@ public:
 
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
         Drm_TurnSecureStop(static_cast<int>(enable));
 
@@ -177,7 +177,7 @@ public:
             const unsigned char serverResponse[],
             uint32_t serverResponseLength) override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
@@ -244,7 +244,7 @@ public:
 
     CDMi_RESULT InitSystemNetflix() override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
         DRM_RESULT err;
 
@@ -296,7 +296,7 @@ public:
 
     CDMi_RESULT TeardownSystemNetflix() override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
         if(!m_poAppContext) {
         	fprintf(stderr, "Error, no app context yet\n");
@@ -337,7 +337,7 @@ public:
 
     CDMi_RESULT DeleteSecureStore() override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
     	DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
         if (err != DRM_SUCCESS)
@@ -353,7 +353,7 @@ public:
             uint8_t secureStoreHash[],
             uint32_t secureStoreHashLength) override
     {
-        ScopedMutex2 lock(drmAppContextMutex_);
+        ScopedMutex lock(drmAppContextMutex_);
 
     	if (secureStoreHashLength < 256)
     	{
