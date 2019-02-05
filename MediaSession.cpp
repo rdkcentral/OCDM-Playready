@@ -222,6 +222,11 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
                                    REVOCATION_BUFFER_SIZE));
   }
 
+#ifdef PR_3_3      
+  //temporary hack to allow time based licenses
+  ( DRM_REINTERPRET_CAST( DRM_APP_CONTEXT_INTERNAL, m_poAppContext ) )->fClockSet = TRUE;    
+#endif
+      
   // Generate a random media session ID.
   ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
   ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
