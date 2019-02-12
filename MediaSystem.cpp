@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include <interfaces/IDRM.h>
+#include <core/core.h>
 #include "MediaSession.h"
 
 #include "ScopedMutex.h"
@@ -56,6 +57,32 @@ static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
 namespace CDMi {
 
 class PlayReady : public IMediaKeys, public IMediaKeysExt {
+private:
+    class Config : public WPEFramework::Core::JSON::Container {
+    private:
+        Config& operator= (const Config&);
+
+    public:
+        Config () 
+            : ReadDir()
+            , StoreLocation() {
+            Add("read-dir", &ReadDir);
+            Add("store-location", &StoreLocation);
+        }
+        Config (const Config& copy) 
+            : ReadDir(copy.ReadDir)
+            , StoreLocation(copy.StoreLocation) {
+            Add("read-dir", &ReadDir);
+            Add("store-location", &StoreLocation);
+        }
+        virtual ~Config() {
+        }
+
+    public:
+        WPEFramework::Core::JSON::String ReadDir;
+        WPEFramework::Core::JSON::String StoreLocation;
+    };
+
 private:
     PlayReady (const PlayReady&) = delete;
     PlayReady& operator= (const PlayReady&) = delete;
@@ -206,18 +233,15 @@ public:
         return 0;
     }
 
-    CDMi_RESULT CreateSystemNetflix(const std::string & readDir, const std::string & storeLocation) override
+    CDMi_RESULT CreateSystemNetflix() override
     {
-    	cerr << "CreateSystemNetflix, readDir: " << readDir << endl;
-    	cerr << "CreateSystemNetflix, storeLocation: " << storeLocation << endl;
-
     	// Clear DRM app context.
     	if (m_poAppContext != nullptr) {
     	    delete m_poAppContext;
     	}
     	m_poAppContext = nullptr;
 
-        std::string rdir(readDir);
+        std::string rdir(m_readDir);
 
         // Create wchar strings from the arguments.
         drmdir_ = createDrmWchar(rdir);
@@ -227,7 +251,7 @@ public:
         g_dstrDrmPath.cchString = rdir.length();
 
         // Store store location
-    	std::string store(storeLocation);
+    	std::string store(m_storeLocation);
 
         drmStore_.pwszString = createDrmWchar(store);
         drmStore_.cchString = store.length();
@@ -371,6 +395,14 @@ public:
         return 0;
     }
 
+    void OnSystemConfigurationAvailable(const std::string& configline)
+    {
+        Config config; 
+        config.FromString(configline);
+        m_readDir = config.ReadDir.Value();
+        m_storeLocation = config.StoreLocation.Value();
+    }
+
 private:
 	DRM_WCHAR* drmdir_;
 	DRM_CONST_STRING drmStore_;
@@ -381,6 +413,9 @@ private:
 	DRM_BYTE *appContextOpaqueBuffer_ = nullptr;
 	DRM_BYTE *pbRevocationBuffer_ = nullptr;
 	DRM_APP_CONTEXT * m_poAppContext; // TODO: should be an std::shared ptr?
+
+    string m_readDir;
+    string m_storeLocation;
 };
 
 static SystemFactoryType<PlayReady> g_instance({"video/x-h264", "audio/mpeg"});
