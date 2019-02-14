@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <stdio.h>
+#include <sstream>
 
 #include "ScopedMutex.h"
 
@@ -21,19 +22,61 @@ static const DRM_CONST_STRING* RIGHTS[] = { &PLAY_RIGHT };
 
 namespace CDMi {
 
+struct CallbackInfo
+{
+    IMediaKeySessionCallback * _callback;
+    uint16_t _compressedVideo;
+    uint16_t _uncompressedVideo;
+    uint16_t _analogVideo;
+    uint16_t _compressedAudio;
+    uint16_t _uncompressedAudio;
+};
+
+static void * PlayLevelUpdateCallback(void * data)
+{
+    CallbackInfo * callbackInfo = static_cast<CallbackInfo *>(data);
+
+    stringstream keyMessage;
+    keyMessage << "{";
+    keyMessage << "\"compressed-video\": " << callbackInfo->_compressedVideo << ",";
+    keyMessage << "\"uncompressed-video\": " << callbackInfo->_uncompressedVideo << ",";
+    keyMessage << "\"analog-video\": " << callbackInfo->_analogVideo << ",";
+    keyMessage << "\"compressed-audio\": " << callbackInfo->_compressedAudio << ",";
+    keyMessage << "\"uncompressed-audio\": " << callbackInfo->_uncompressedAudio;
+    keyMessage << "}";
+
+    string keyMessageStr = keyMessage.str();
+    const uint8_t * messageBytes = reinterpret_cast<const uint8_t *>(keyMessageStr.c_str());
+
+    // TODO: why does URL need to be non-const?
+    char urlBuffer[64];
+    strcpy(urlBuffer, "properties");
+    callbackInfo->_callback->OnKeyMessage(messageBytes, keyMessageStr.length() + 1, urlBuffer);
+
+    delete callbackInfo;
+    return nullptr;
+}
+
 static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, DRM_POLICY_CALLBACK_TYPE callbackType, const DRM_VOID *data) {
     // We only care about the play callback.
     if (callbackType != DRM_PLAY_OPL_CALLBACK)
         return DRM_SUCCESS;
 
+    CallbackInfo * callbackInfo = new CallbackInfo;
+    const IMediaKeySessionCallback * constSessionCallback = reinterpret_cast<const IMediaKeySessionCallback *>(data);
+    callbackInfo->_callback = const_cast<IMediaKeySessionCallback *>(constSessionCallback);
+
     // Pull out the protection levels.
-    PlayLevels2* levels = static_cast<PlayLevels2*>(const_cast<DRM_VOID*>(data));
     const DRM_PLAY_OPL_EX* playLevels = static_cast<const DRM_PLAY_OPL_EX*>(outputLevels);
-    levels->compressedDigitalVideoLevel_ = playLevels->minOPL.wCompressedDigitalVideo;
-    levels->uncompressedDigitalVideoLevel_ = playLevels->minOPL.wUncompressedDigitalVideo;
-    levels->analogVideoLevel_ = playLevels->minOPL.wAnalogVideo;
-    levels->compressedDigitalAudioLevel_ = playLevels->minOPL.wCompressedDigitalAudio;
-    levels->uncompressedDigitalAudioLevel_ = playLevels->minOPL.wUncompressedDigitalAudio;
+    callbackInfo->_compressedVideo = playLevels->minOPL.wCompressedDigitalVideo;
+    callbackInfo->_uncompressedVideo = playLevels->minOPL.wUncompressedDigitalVideo;
+    callbackInfo->_analogVideo = playLevels->minOPL.wAnalogVideo;
+    callbackInfo->_compressedAudio = playLevels->minOPL.wCompressedDigitalAudio;
+    callbackInfo->_uncompressedAudio = playLevels->minOPL.wUncompressedDigitalAudio;
+
+    // Run on a new thread, so we don't go too deep in the IPC callstack.
+    pthread_t threadId;
+    pthread_create(&threadId, nullptr, PlayLevelUpdateCallback, callbackInfo);
 
     // All done.
     return DRM_SUCCESS;
@@ -222,7 +265,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         err = Drm_Reader_Bind_Netflix(m_poAppContext,
                                       RIGHTS,
                                       sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-									  &opencdm_output_levels_callback, &levels_,
+									  &opencdm_output_levels_callback, m_piCallback,
                                       &mSecureStopId[0],
                                       m_oDecryptContext);
     } else {
@@ -236,7 +279,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         return 1;
     }
 
-    err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
+    err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, m_piCallback);
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
