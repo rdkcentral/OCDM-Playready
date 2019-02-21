@@ -181,16 +181,16 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
 }
 
 MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData)
-    : m_poAppContext(nullptr)
-    , m_pbOpaqueBuffer(nullptr) 
+    : m_pbOpaqueBuffer(nullptr)
     , m_cbOpaqueBuffer(0)
     , m_pbRevocationBuffer(nullptr)
     , m_eKeyState(KEY_INIT)
-    , m_fCommit(FALSE)
     , m_pbChallenge(nullptr)
     , m_cbChallenge(0)
     , m_pchSilentURL(nullptr) 
     , m_piCallback(nullptr)
+    , m_fCommit(FALSE)
+    , m_poAppContext(nullptr)
     , m_decryptInited(false) {
     
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
@@ -321,7 +321,6 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
     
   DRM_RESULT dr = DRM_SUCCESS; 
   DRM_DWORD cchSilentURL = 0;
-  DRM_ANSI_STRING dastrCustomData = EMPTY_DRM_STRING;
 
 /* PRv3.3 support */
 #ifdef PR_3_3
@@ -460,7 +459,9 @@ CDMi_RESULT MediaKeySession::Remove(void) {
   return CDMi_S_FALSE;
 }
 
-CDMi_RESULT MediaKeySession::Close(void) {}
+CDMi_RESULT MediaKeySession::Close(void) {
+    return CDMi_SUCCESS;
+}
 
 /*
 CDMi_RESULT MediaKeySession::Decrypt(
@@ -485,7 +486,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
   uint8_t *ivData = (uint8_t *) f_pbIV;
   uint8_t temp;
 
-/* PRv3.3 support */
 #ifdef PR_3_3
     DRM_DWORD rgdwMappings[2];
     if( f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL )
@@ -512,7 +512,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
 
   MEMCPY(&oAESContext.qwInitializationVector, ivData, f_cbIV);
 
-/* PRv3.3 support */
 #ifdef PR_3_3
     if ( NULL == f_pdwSubSampleMapping )
     {
@@ -541,7 +540,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
     m_fCommit = TRUE;
   } 
 
-/* PRv3.3 support */
 #ifndef PR_3_3
   // Return clear content.
   *f_pcbOpaqueClearContent = payloadDataSize;
@@ -557,7 +555,6 @@ ErrorExit:
     DRM_ERR_GetErrorNameFromCode(dr, &description);
     printf("playready error: %s\n", description);
 
-/* PRv3.3 support */
 #ifdef PR_3_3
         if( f_pcbOpaqueClearContent != NULL )
           {
