@@ -4,3 +4,4 @@ Playready.drm
 Playready.json
 cmake_install.cmake
 install_manifest.txt
+CMakeFiles/
