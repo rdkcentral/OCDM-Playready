@@ -118,6 +118,7 @@ public:
 
     CDMi_RESULT DestroyMediaKeySession(IMediaKeySession *f_piMediaKeySession) {
 
+        f_piMediaKeySession->UninitializeContext();
         delete f_piMediaKeySession;
 
         return CDMi_SUCCESS; 
@@ -136,7 +137,7 @@ public:
        DRM_UINT64 utctime64;
        DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext, &utctime64);
        if (err != DRM_SUCCESS) {
-       	fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
+           fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
            // return invalid time
            return (time_t) -1;
        } else {
@@ -152,14 +153,21 @@ public:
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
             IMediaKeySessionExt** session) override
-	{
+    {
 
         *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext);
 
         fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
 
         return CDMi_SUCCESS;
-	}
+    }
+
+    CDMi_RESULT DestroyMediaKeySessionExt(IMediaKeySession *f_piMediaKeySession)
+    {
+        delete f_piMediaKeySession;
+
+        return CDMi_SUCCESS;
+    }
 
     std::string GetVersionExt() const override
     {
@@ -192,7 +200,6 @@ public:
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
         ScopedMutex lock(drmAppContextMutex_);
-
         Drm_TurnSecureStop(static_cast<int>(enable));
 
         return 0;
@@ -216,6 +223,7 @@ public:
             fprintf(stderr, "Warning: sessionIDLength is zero.");
             return 1;
         }
+
 
         // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
         unsigned char uuid[TEE_SESSION_ID_LEN];
@@ -314,7 +322,7 @@ public:
             return 1;
         }
 
-       //return ERROR_NONE;
+        //return ERROR_NONE;
         return 0;
     }
 
@@ -340,8 +348,6 @@ public:
         if(DRM_FAILED(err))
         {
         	fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
-        	delete m_poAppContext;
-        	m_poAppContext = nullptr;
         }
         // Uninitialize drm context
         Drm_Uninitialize(m_poAppContext);

@@ -24,6 +24,10 @@
 #include <vector>
 #include <sys/utsname.h>
 
+#include "ScopedMutex.h"
+
+extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
+
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
 #ifdef DRM_WCHAR_CAST
@@ -266,9 +270,13 @@ ErrorExit:
 }
 
 MediaKeySession::~MediaKeySession(void) {
+  m_eKeyState = KEY_CLOSED;
 
-  Drm_Uninitialize(m_poAppContext);
- 
+  if (m_oDecryptContext) {
+    delete m_oDecryptContext;
+    m_oDecryptContext = nullptr;
+  }
+
   SAFE_OEM_FREE(m_pbChallenge);
   SAFE_OEM_FREE(m_pchSilentURL);
 
@@ -276,14 +284,13 @@ MediaKeySession::~MediaKeySession(void) {
     SAFE_OEM_FREE(m_pbRevocationBuffer);
 
   SAFE_OEM_FREE(m_pbOpaqueBuffer);
-  SAFE_OEM_FREE(m_poAppContext);
-
-  m_eKeyState = KEY_CLOSED;
-  
-  delete m_oDecryptContext;
-  m_oDecryptContext = nullptr;
-  
   printf("Destructing PlayReady Session [%p]\n", this);
+}
+
+void MediaKeySession::UninitializeContext() {
+  Drm_Uninitialize(m_poAppContext);
+  
+  SAFE_OEM_FREE(m_poAppContext);
 }
 
 const char *MediaKeySession::GetSessionId(void) const {
@@ -585,6 +592,8 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t*, // keyId
     bool initWithLast15)
 {
+
+    ScopedMutex systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
     	//return ERROR_NONE;

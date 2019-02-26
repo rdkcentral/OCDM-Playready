@@ -129,6 +129,7 @@ public:
     virtual CDMi_RESULT Remove();
 
     virtual CDMi_RESULT Close(void);
+    virtual void UninitializeContext();
 
     virtual const char *GetSessionId(void) const;
     virtual const char *GetKeySystem(void) const;
@@ -169,8 +170,10 @@ public:
     virtual void SetSessionStateExt(SessionStateExt sessionState) override;
     virtual CDMi_RESULT SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength) override;
     virtual CDMi_RESULT GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
+    virtual CDMi_RESULT CancelChallengeDataNetflix() override;
     virtual CDMi_RESULT StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId) override;
     virtual CDMi_RESULT InitDecryptContextByKid() override;
+    virtual CDMi_RESULT CleanDecryptContext() override;
 
 private:
 
