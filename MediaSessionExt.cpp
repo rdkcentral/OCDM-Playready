@@ -172,7 +172,7 @@ CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t dr
 	return 0;
 }
 
-CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId)
+CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, uint8_t * secureStopId)
 {
     // open scope for DRM_APP_CONTEXT mutex
     ScopedMutex systemLock(drmAppContextMutex_);
@@ -212,7 +212,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 
     err = Drm_LicenseAcq_ProcessResponse_Netflix(m_poAppContext,
                                                  DRM_PROCESS_LIC_RESPONSE_NO_FLAGS,
-                                                 NULL, NULL,
+                                                 nullptr, nullptr,
                                                  &localLicenseData[0],
                                                  (DRM_DWORD)localLicenseData.size(),
                                                  secureStopId,
@@ -341,7 +341,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     fprintf(stderr, "isLDL: %u\n", isLDL);
 
     // PlayReady doesn't like valid pointer + size 0
-    DRM_BYTE* passedChallenge = (DRM_BYTE*)challenge; // TODO: C-style casting
+    DRM_BYTE* passedChallenge = static_cast<DRM_BYTE*>(challenge);
     if (challengeSize == 0) {
     	passedChallenge = nullptr;
     }
@@ -349,11 +349,11 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     err = Drm_LicenseAcq_GenerateChallenge_Netflix(m_poAppContext,
                                                    RIGHTS,
                                                    sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                                   NULL,
-                                                   NULL, 0,
-                                                   NULL, NULL,
-                                                   NULL, NULL,
-												   passedChallenge, &challengeSize,
+                                                   nullptr,
+                                                   nullptr, 0,
+                                                   nullptr, nullptr,
+                                                   nullptr, nullptr,
+                                                   passedChallenge, &challengeSize,
                                                    &mNounce[0], isLDL);
 
     fprintf(stderr, "ChallengeSize: %u\n", challengeSize);
@@ -366,6 +366,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
 
     if (err == DRM_E_BUFFERTOOSMALL) {
     	//return ERROR_OUT_OF_MEMORY;
+        fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
     	return 2;
     }
 
@@ -463,11 +464,11 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
     }
     if (m_poAppContext)
     {
-        err = Drm_Reader_Commit(m_poAppContext, NULL, NULL);
+        err = Drm_Reader_Commit(m_poAppContext, nullptr, nullptr);
         if (DRM_FAILED(err))
         {
             // nothing that we can do about. Just log
-            fprintf(stderr, "PlayReadyDrmSystem::%s Drm_Reader_Commit 0x%08lx\n", __func__, static_cast<unsigned long>(err));
+            fprintf(stderr, "Error Drm_Reader_Commit 0x%08lx\n", static_cast<unsigned long>(err));
         }
     }
 

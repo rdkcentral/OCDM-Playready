@@ -43,7 +43,7 @@ static DRM_WCHAR* createDrmWchar(std::string const& s) {
 static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
     DRM_DWORD ich = 0;
 
-    if( f_pPackedString == NULL
+    if( f_pPackedString == nullptr
      || f_cch == 0 )
     {
         return;
@@ -197,6 +197,12 @@ public:
         return ldlLimit;
     }
 
+    bool IsSecureStopEnabled() override
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+        return static_cast<bool>(Drm_SupportSecureStop());
+    }
+
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
         ScopedMutex lock(drmAppContextMutex_);
@@ -205,10 +211,82 @@ public:
         return 0;
     }
 
-    CDMi_RESULT CommitSecureStop(
-            const unsigned char sessionID[],
+    uint32_t ResetSecureStops() override
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+        // if secure stop is not supported, return
+        DRM_BOOL supported = Drm_SupportSecureStop();
+        if (supported == FALSE)
+            return 0;
+
+        DRM_WORD numDeleted = 0;
+        DRM_RESULT err = Drm_ResetSecureStops(m_poAppContext, &numDeleted);
+        if (err != DRM_SUCCESS) {
+            fprintf(stderr, "Drm_ResetSecureStops returned 0x%lx\n", (long)err);
+        }
+        return numDeleted;
+    }
+
+    CDMi_RESULT GetSecureStopIds(uint8_t * ids[], uint32_t & count)
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+
+        // if secure stop is not supported, return NotAllowed
+        DRM_BOOL supported = Drm_SupportSecureStop();
+        if (supported == FALSE)
+            return 0;
+
+        DRM_BYTE sessionIds[TEE_MAX_NUM_SECURE_STOPS][TEE_SESSION_ID_LEN];
+        DRM_RESULT err = Drm_GetSecureStopIds(m_poAppContext, sessionIds, &count);
+        if (err != DRM_SUCCESS) {
+            fprintf(stderr,"Drm_GetSecureStopIds returned 0x%lx\n", (long)err);
+            return 1;
+        }
+        //TODO: try to cast directly the ids instead creating local sessionIds
+        for (int i = 0; i < count; ++i) {
+            memcpy(ids[i], sessionIds[i], TEE_SESSION_ID_LEN);
+        }
+        memcpy(ids[0], "testingTest", sizeof("testingTest"));
+        return 0;
+    }
+
+    CDMi_RESULT GetSecureStop(
+            const uint8_t sessionID[],
             uint32_t sessionIDLength,
-            const unsigned char serverResponse[],
+            uint8_t * rawData,
+            uint16_t & rawSize)
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+
+        // if secure stop is not supported, return
+        DRM_BOOL supported = Drm_SupportSecureStop();
+        if (supported == FALSE)
+            return 0;
+
+        if (!sessionIDLength) {
+            fprintf(stderr, "Drm_GetSecureStop sessionID length %zu", sessionIDLength);
+            return 1;
+        }
+
+        // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
+        uint8_t uuid[TEE_SESSION_ID_LEN];
+        memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
+
+        // PlayReady doesn't like valid pointer + size 0
+        DRM_BYTE* passedRawData = static_cast<DRM_BYTE*>(rawData);
+        DRM_RESULT err = Drm_GetSecureStop(m_poAppContext, uuid, passedRawData, &rawSize);
+        if (err != DRM_E_BUFFERTOOSMALL) {
+            fprintf(stderr, "Drm_GetSecureStop(0) returned 0x%lx\n", (long)err);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    CDMi_RESULT CommitSecureStop(
+            const uint8_t sessionID[],
+            uint32_t sessionIDLength,
+            const uint8_t serverResponse[],
             uint32_t serverResponseLength) override
     {
         ScopedMutex lock(drmAppContextMutex_);
@@ -220,21 +298,21 @@ public:
 
         if(!sessionIDLength) {
             // TODO: argument error?
-            fprintf(stderr, "Warning: sessionIDLength is zero.");
+            fprintf(stderr, "Warning: sessionIDLength is zero.\n");
             return 1;
         }
 
 
         // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
-        unsigned char uuid[TEE_SESSION_ID_LEN];
+        uint8_t uuid[TEE_SESSION_ID_LEN];
         memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
 
         // commit it
         DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext, uuid);
         if (err != DRM_SUCCESS)
         {
-        	// TODO: This call now fails sometimes with 0x80004005 (DRM_E_FAIL)
-        	//       This seems to be introduced by 86d1dea5db7c4176920b91a50f894bb52039cd70 (Netflix Mutex -> WPEFramework CriticalSection)
+            // TODO: This call now fails sometimes with 0x80004005 (DRM_E_FAIL)
+            //       This seems to be introduced by 86d1dea5db7c4176920b91a50f894bb52039cd70 (Netflix Mutex -> WPEFramework CriticalSection)
             fprintf(stderr, "Drm_CommitSecureStop returned 0x%lx\n", (long)err);
         }
 
@@ -300,7 +378,7 @@ public:
         // TODO: move app context to OpenCDMAccessor
         m_poAppContext = new DRM_APP_CONTEXT;
         memset(m_poAppContext, 0, sizeof(DRM_APP_CONTEXT));
-        err  = Drm_Initialize(m_poAppContext, NULL,
+        err  = Drm_Initialize(m_poAppContext, nullptr,
                               appContextOpaqueBuffer_,
                               MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
                               &drmStore_);
@@ -336,7 +414,7 @@ public:
         }
 
         DRM_RESULT err;
-        err = Drm_Reader_Commit(m_poAppContext, NULL, NULL);
+        err = Drm_Reader_Commit(m_poAppContext, nullptr, nullptr);
         if(DRM_FAILED(err)) {
         	fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
         }
@@ -344,7 +422,7 @@ public:
         err = Drm_StoreMgmt_CleanupStore(m_poAppContext,
                                          DRM_STORE_CLEANUP_DELETE_EXPIRED_LICENSES |
                                          DRM_STORE_CLEANUP_DELETE_REMOVAL_DATE_LICENSES,
-                                         NULL, 0, NULL);
+                                         nullptr, 0, nullptr);
         if(DRM_FAILED(err))
         {
         	fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
@@ -365,14 +443,50 @@ public:
         return 0;
     }
 
+    CDMi_RESULT DeleteKeyStore() override
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+
+        DRM_RESULT err = Drm_DeleteKeyStore();
+        if (err != DRM_SUCCESS)
+        {
+            fprintf(stderr, "Error: Drm_DeleteKeyStore returned 0x%lX\n", (long)err);
+            return 1;
+        }
+
+        return 0;
+    }
+
     CDMi_RESULT DeleteSecureStore() override
     {
         ScopedMutex lock(drmAppContextMutex_);
 
-    	DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
+        DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_DeleteSecureStore returned 0x%lX\n", (long)err);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    CDMi_RESULT GetKeyStoreHash(
+            uint8_t keyStoreHash[],
+            uint32_t keyStoreHashLength) override
+    {
+        ScopedMutex lock(drmAppContextMutex_);
+
+        if (keyStoreHashLength < 256)
+        {
+            fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
+            return 1;
+        }
+
+        DRM_RESULT err = Drm_GetKeyStoreHash(keyStoreHash);
+        if (err != DRM_SUCCESS)
+        {
+            fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
             return 1;
         }
 

@@ -217,7 +217,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
 
   // Initialize DRM app context.
   ChkDR(Drm_Initialize(m_poAppContext,
-                       NULL,
+                       nullptr,
                        m_pbOpaqueBuffer,
                        m_cbOpaqueBuffer,
                        &g_dstrCDMDrmStoreName));
@@ -236,7 +236,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
 #endif
       
   // Generate a random media session ID.
-  ChkDR(Oem_Random_GetBytes(NULL, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
+  ChkDR(Oem_Random_GetBytes(nullptr, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
   ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
 
   // Store the generated media session ID in base64 encoded form.
@@ -335,7 +335,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                         g_rgpdstrRights,
                         DRM_NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
-                        NULL,
+                        nullptr,
                         &m_oDecryptContext);
 #endif
 
@@ -345,19 +345,19 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
   dr = Drm_LicenseAcq_GenerateChallenge(m_poAppContext,
                                         g_rgpdstrRights,
                                         sizeof(g_rgpdstrRights) / sizeof(DRM_CONST_STRING *),
-                                         NULL,
-                                         NULL, // FIXME : Custom data
+                                         nullptr,
+                                         nullptr, // FIXME : Custom data
                                          0, // FIXME : Custon data size 
-                                         NULL,
+                                         nullptr,
                                          &cchSilentURL,
-                                         NULL,
-                                         NULL,
+                                         nullptr,
+                                         nullptr,
 #ifdef PR_3_3						//PRv3.3 support
                                          m_pbChallenge,
                                          &m_cbChallenge,
-                                         NULL);
+                                         nullptr);
 #else
-                                         NULL,
+                                         nullptr,
                                          &m_cbChallenge);
 #endif
 
@@ -381,17 +381,17 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
   ChkDR(Drm_LicenseAcq_GenerateChallenge(m_poAppContext,
                                          g_rgpdstrRights,
                                          sizeof(g_rgpdstrRights) / sizeof(DRM_CONST_STRING *),
-                                         NULL,
-                                         NULL, // FIXME : Custom data
+                                         nullptr,
+                                         nullptr, // FIXME : Custom data
                                          0, // FIXME : Custon data size 
                                          m_pchSilentURL,
                                          &cchSilentURL,
-                                         NULL,
-                                         NULL,
+                                         nullptr,
+                                         nullptr,
                                          m_pbChallenge,
 #ifdef PR_3_3						//PRv3.3 support
                                          &m_cbChallenge,
-                                         NULL));
+                                         nullptr));
 #else
                                          &m_cbChallenge));
 #endif
@@ -425,8 +425,8 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
   ChkDR(Drm_LicenseAcq_ProcessResponse(m_poAppContext,
                                        DRM_PROCESS_LIC_RESPONSE_SIGNATURE_NOT_REQUIRED,
 #ifndef PR_3_3				//PRv3.3 support
-                                       NULL,
-                                       NULL,
+                                       nullptr,
+                                       nullptr,
 #endif
                                        const_cast<DRM_BYTE *>(m_pbKeyMessageResponse),
                                        m_cbKeyMessageResponse,
@@ -436,7 +436,7 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
                         g_rgpdstrRights,
                         NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
-                        NULL,
+                        nullptr,
                         m_oDecryptContext));
 
   m_eKeyState = KEY_READY;
@@ -495,19 +495,19 @@ CDMi_RESULT MediaKeySession::Decrypt(
 
 #ifdef PR_3_3
     DRM_DWORD rgdwMappings[2];
-    if( f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL )
+    if( f_pcbOpaqueClearContent == nullptr || f_ppbOpaqueClearContent == nullptr )
     {
         dr = DRM_E_INVALIDARG;
         goto ErrorExit;
     }
 
     *f_pcbOpaqueClearContent = 0;
-    *f_ppbOpaqueClearContent = NULL;
+    *f_ppbOpaqueClearContent = nullptr;
 
     ChkBOOL(m_eKeyState == KEY_READY, DRM_E_INVALIDARG);
-    ChkArg(f_pbIV != NULL && f_cbIV == sizeof(DRM_UINT64));
+    ChkArg(f_pbIV != nullptr && f_cbIV == sizeof(DRM_UINT64));
 #else
-  ChkDR(Drm_Reader_InitDecrypt(&m_oDecryptContext, NULL, 0));
+  ChkDR(Drm_Reader_InitDecrypt(&m_oDecryptContext, nullptr, 0));
 #endif
 
   // FIXME: IV bytes need to be swapped ???
@@ -520,7 +520,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
   MEMCPY(&oAESContext.qwInitializationVector, ivData, f_cbIV);
 
 #ifdef PR_3_3
-    if ( NULL == f_pdwSubSampleMapping )
+    if ( nullptr == f_pdwSubSampleMapping )
     {
         rgdwMappings[0] = 0;
         rgdwMappings[1] = payloadDataSize;
@@ -543,7 +543,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
      
   // Call commit during the decryption of the first sample.
   if (!m_fCommit) {
-    ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL));
+    ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, nullptr));
     m_fCommit = TRUE;
   } 
 
@@ -563,13 +563,13 @@ ErrorExit:
     printf("playready error: %s\n", description);
 
 #ifdef PR_3_3
-        if( f_pcbOpaqueClearContent != NULL )
+        if( f_pcbOpaqueClearContent != nullptr )
           {
               *f_pcbOpaqueClearContent = 0;
           }
-          if( f_ppbOpaqueClearContent != NULL )
+          if( f_ppbOpaqueClearContent != nullptr )
           {
-              *f_ppbOpaqueClearContent = NULL;
+              *f_ppbOpaqueClearContent = nullptr;
           }
 #endif
   }
@@ -607,7 +607,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     
     DRM_RESULT err = DRM_SUCCESS;
     if (!initWithLast15) {
-        err = Drm_Reader_InitDecrypt(m_oDecryptContext, NULL, 0);
+        err = Drm_Reader_InitDecrypt(m_oDecryptContext, nullptr, 0);
     } else {
         // Initialize the decryption context for Cocktail packaged
         // content. This is a no-op for AES packaged content.
@@ -655,7 +655,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
         //err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
-        err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, NULL); // TODO: pass along user data
+        err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, nullptr); // TODO: pass along user data
         m_fCommit = TRUE;
     }
 
