@@ -48,7 +48,6 @@ static void * PlayLevelUpdateCallback(void * data)
     string keyMessageStr = keyMessage.str();
     const uint8_t * messageBytes = reinterpret_cast<const uint8_t *>(keyMessageStr.c_str());
 
-    // TODO: why does URL need to be non-const?
     char urlBuffer[64];
     strcpy(urlBuffer, "properties");
     callbackInfo->_callback->OnKeyMessage(messageBytes, keyMessageStr.length() + 1, urlBuffer);
@@ -93,7 +92,6 @@ MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLe
    , m_oDecryptContext(nullptr)
 {
     mLicenseResponse = std::unique_ptr<LicenseResponse2>(new LicenseResponse2());
-    mSessionState = OcdmSessionState::Ocdm_InvalidState;
     mSecureStopId.clear();
 
     // TODO: can we do this nicer?
@@ -133,43 +131,9 @@ uint16_t MediaKeySession::PlaylevelUncompressedAudio() const
     return 61;
 }
 
-std::string MediaKeySession::GetContentIdExt() const
-{
-    return mContentId;
-}
-
-void MediaKeySession::SetContentIdExt(const std::string & contentId)
-{
-    cerr << "Null2 received content id ext: " << contentId << endl;
-
-    _contentIdExt = contentId;
-}
-
-LicenseTypeExt MediaKeySession::GetLicenseTypeExt() const
-{
-    // TODO: conversion
-    return (CDMi::LicenseTypeExt)mLicenseType;
-}
-
-void MediaKeySession::SetLicenseTypeExt(LicenseTypeExt licenseType)
-{
-}
-
-SessionStateExt MediaKeySession::GetSessionStateExt() const
-{
-    // TODO: conversion
-    return (SessionStateExt)mSessionState;
-}
-
-void MediaKeySession::SetSessionStateExt(SessionStateExt sessionState)
-{
-    // TODO: conversion
-    mSessionState = (CDMi::OcdmSessionState)sessionState;
-}
-
 CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength)
 {
-	return 0;
+    return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, uint8_t * secureStopId)
@@ -178,7 +142,6 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     ScopedMutex systemLock(drmAppContextMutex_);
 
     // Make sure PlayReady still expects a 16 byte array.
-    // TODO: static assert?
     ASSERT(TEE_SESSION_ID_LEN == 16);
 
     memset(secureStopId, 0, TEE_SESSION_ID_LEN);
@@ -195,7 +158,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     err = Drm_Content_SetProperty(m_poAppContext,
@@ -205,7 +168,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     mLicenseResponse->clear();
@@ -219,7 +182,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
                                                  mLicenseResponse->get());
     if (DRM_FAILED(err)) {
         fprintf(stderr, "Error: Drm_LicenseAcq_ProcessResponse_Netflix returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     // Also store copy of secure stop id in session struct
@@ -228,7 +191,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     mSecureStopId.assign(secureStopId, secureStopId + TEE_SESSION_ID_LEN);
 
     // All done.
-    return 0;
+    return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
@@ -244,7 +207,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     err = Drm_Content_SetProperty(m_poAppContext,
@@ -254,12 +217,14 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
     
     if (m_decryptInited) {
-        return 0;
+        return CDMi_SUCCESS;
     }
+
+    CDMi_RESULT result = CDMi_SUCCESS;
 
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
 
@@ -273,32 +238,34 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
                                       &opencdm_output_levels_callback, m_piCallback,
                                       &mSecureStopId[0],
                                       m_oDecryptContext);
+    
+
+        if (DRM_FAILED(err))
+        {
+            fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
+            result = CDMi_S_FALSE;
+        } else {
+
+            err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, m_piCallback);
+            if (DRM_FAILED(err))
+            {
+                fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
+                result = CDMi_S_FALSE;
+            }
+        }
+        if (result == CDMi_SUCCESS) {
+            m_fCommit = TRUE;
+            m_decryptInited = true;
+        }
     } else {
-    	fprintf(stderr, "Error: secure stop ID is not valid\n");
-    	return 1;
+        fprintf(stderr, "Error: secure stop ID is not valid\n");
+        result = CDMi_S_FALSE;
     }
-
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
-        return 1;
-    }
-
-    err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, m_piCallback);
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
-        return 1;
-    }
-    m_fCommit = TRUE;
-    m_decryptInited = true;
-
-    return 0;
+    return result;
 }
 
 CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL)
 {
-	// TODO: this is more or less a copy paste from Netflix, so deal with C-style casting and use or NULL instead of nullptr.
     DRM_RESULT err;
 
     ScopedMutex systemLock(drmAppContextMutex_);
@@ -306,8 +273,8 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     // sanity check for drm header
     if (mDrmHeader.size() == 0)
     {
-    	fprintf(stderr, "Error: No valid DRM header\n");
-        return 1;
+        fprintf(stderr, "Error: No valid DRM header\n");
+        return CDMi_S_FALSE;
     }
 
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
@@ -318,7 +285,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     /*
@@ -331,7 +298,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     mNounce.resize(TEE_SESSION_ID_LEN);
@@ -343,7 +310,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     // PlayReady doesn't like valid pointer + size 0
     DRM_BYTE* passedChallenge = static_cast<DRM_BYTE*>(challenge);
     if (challengeSize == 0) {
-    	passedChallenge = nullptr;
+        passedChallenge = nullptr;
     }
 
     err = Drm_LicenseAcq_GenerateChallenge_Netflix(m_poAppContext,
@@ -361,16 +328,15 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     if ((err != DRM_E_BUFFERTOOSMALL) && (DRM_FAILED(err)))
     {
         fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     if (err == DRM_E_BUFFERTOOSMALL) {
-    	//return ERROR_OUT_OF_MEMORY;
         fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
-    	return 2;
+        return CDMi_OUT_OF_MEMORY ;
     }
 
-    return 0;
+    return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::CancelChallengeDataNetflix()
@@ -379,23 +345,18 @@ CDMi_RESULT MediaKeySession::CancelChallengeDataNetflix()
     DRM_RESULT err = Drm_LicenseAcq_CancelChallenge_Netflix(m_poAppContext, &mNounce[0]);
     if (DRM_FAILED(err)) {
         fprintf(stderr, "Error Drm_LicenseAcq_CancelChallenge_Netflix: 0x%08lx\n", static_cast<unsigned long>(err));
-        return 1;
+        return CDMi_S_FALSE;
     }
-    return 0;
+    return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::CleanDecryptContext()
 {
     // open scope for DRM_APP_CONTEXT mutex
     ScopedMutex systemLock(drmAppContextMutex_);
-
     DRM_RESULT err;
-    // sanity check for drm header
-    if (mDrmHeader.size() == 0)
-    {
-        fprintf(stderr, "Error: No valid DRM header\n");
-        return 1;
-    }
+
+    CDMi_RESULT result = CDMi_SUCCESS;
 
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
     ASSERT(m_poAppContext != nullptr);
@@ -405,7 +366,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
         {
             fprintf(stderr, "Error Drm_Reader_Unbind: 0x%08lx when creating temporary DRM_DECRYPT_CONTEXT\n",
                        static_cast<unsigned long>(err));
-            return 1;
+            result = CDMi_S_FALSE;
         }
 
     } else {
@@ -415,7 +376,14 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
         if (DRM_FAILED(err))
         {
             fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
+        }
+
+        // sanity check for drm header
+        if (mDrmHeader.size() == 0)
+        {
+            fprintf(stderr, "Error: No valid DRM header\n");
+            return CDMi_S_FALSE;
         }
 
         /*
@@ -428,7 +396,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
         if (DRM_FAILED(err))
         {
             fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
         //Create a decrypt context and bind it with the drm context.
@@ -443,23 +411,23 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
                                           &opencdm_output_levels_callback, m_piCallback,
                                           &mSecureStopId[0],
                                           m_oDecryptContext);
+            if (DRM_FAILED(err))
+            {
+                fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
+                result = CDMi_S_FALSE;
+            } else {
+
+                err = Drm_Reader_Unbind(m_poAppContext, m_oDecryptContext);
+                if (DRM_FAILED(err))
+                {
+                    fprintf(stderr, "Error Drm_Reader_Unbind: 0x%08lx when creating temporary DRM_DECRYPT_CONTEXT\n",
+                                    static_cast<unsigned long>(err));
+                    result = CDMi_S_FALSE;
+                }
+            }
         } else {
             fprintf(stderr, "Error: secure stop ID is not valid\n");
-            return 1;
-        }
-
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
-            return 1;
-        }
-
-        err = Drm_Reader_Unbind(m_poAppContext, m_oDecryptContext);
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error Drm_Reader_Unbind: 0x%08lx when creating temporary DRM_DECRYPT_CONTEXT\n",
-                            static_cast<unsigned long>(err));
-            return 1;
+            result = CDMi_S_FALSE;
         }
     }
     if (m_poAppContext)
@@ -476,6 +444,6 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
     m_oDecryptContext = nullptr;
     m_fCommit = FALSE;
     m_decryptInited = false;
-    return 0;
+    return CDMi_SUCCESS;
 }
 }

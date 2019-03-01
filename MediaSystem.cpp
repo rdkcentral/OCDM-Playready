@@ -135,14 +135,14 @@ public:
        ScopedMutex lock(drmAppContextMutex_);
 
        DRM_UINT64 utctime64;
-       DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext, &utctime64);
+       DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext.get(), &utctime64);
        if (err != DRM_SUCCESS) {
            fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
            // return invalid time
            return (time_t) -1;
        } else {
            //*time = (time_t)utctime64;
-    	   return (time_t)utctime64;
+           return (time_t)utctime64;
        }
 
        return 0;
@@ -155,7 +155,7 @@ public:
             IMediaKeySessionExt** session) override
     {
 
-        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext);
+        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext.get());
 
         fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
 
@@ -171,16 +171,16 @@ public:
 
     std::string GetVersionExt() const override
     {
-		const uint32_t MAXLEN = 64;
-		char versionStr[MAXLEN];
-		if (g_dstrReqTagPlayReadyClientVersionData.cchString >= MAXLEN)
-			return "";
-		DRM_UTL_DemoteUNICODEtoASCII(g_dstrReqTagPlayReadyClientVersionData.pwszString,
-				versionStr, MAXLEN);
-		((DRM_BYTE*)versionStr)[g_dstrReqTagPlayReadyClientVersionData.cchString] = 0;
-		PackedCharsToNative(versionStr, g_dstrReqTagPlayReadyClientVersionData.cchString + 1);
+        const uint32_t MAXLEN = 64;
+        char versionStr[MAXLEN];
+        if (g_dstrReqTagPlayReadyClientVersionData.cchString >= MAXLEN)
+            return "";
+        DRM_UTL_DemoteUNICODEtoASCII(g_dstrReqTagPlayReadyClientVersionData.pwszString,
+                versionStr, MAXLEN);
+        ((DRM_BYTE*)versionStr)[g_dstrReqTagPlayReadyClientVersionData.cchString] = 0;
+        PackedCharsToNative(versionStr, g_dstrReqTagPlayReadyClientVersionData.cchString + 1);
 
-		return string(versionStr);
+        return string(versionStr);
     }
 
     uint32_t GetLdlSessionLimit() const override
@@ -188,7 +188,7 @@ public:
         ScopedMutex lock(drmAppContextMutex_);
 
         uint32_t ldlLimit = 0;
-        DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext, &ldlLimit);
+        DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext.get(), &ldlLimit);
         if (err != DRM_SUCCESS) {
             fprintf(stderr, "Error: Drm_LicenseAcq_GetLdlSessionsLimit_Netflix returned 0x%lX\n", (long)err);
             return 0;
@@ -208,7 +208,7 @@ public:
         ScopedMutex lock(drmAppContextMutex_);
         Drm_TurnSecureStop(static_cast<int>(enable));
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     uint32_t ResetSecureStops() override
@@ -220,7 +220,7 @@ public:
             return 0;
 
         DRM_WORD numDeleted = 0;
-        DRM_RESULT err = Drm_ResetSecureStops(m_poAppContext, &numDeleted);
+        DRM_RESULT err = Drm_ResetSecureStops(m_poAppContext.get(), &numDeleted);
         if (err != DRM_SUCCESS) {
             fprintf(stderr, "Drm_ResetSecureStops returned 0x%lx\n", (long)err);
         }
@@ -234,20 +234,20 @@ public:
         // if secure stop is not supported, return NotAllowed
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
-            return 0;
+            return CDMi_SUCCESS;
 
         DRM_BYTE sessionIds[TEE_MAX_NUM_SECURE_STOPS][TEE_SESSION_ID_LEN];
-        DRM_RESULT err = Drm_GetSecureStopIds(m_poAppContext, sessionIds, &count);
+        DRM_RESULT err = Drm_GetSecureStopIds(m_poAppContext.get(), sessionIds, &count);
         if (err != DRM_SUCCESS) {
             fprintf(stderr,"Drm_GetSecureStopIds returned 0x%lx\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
         //TODO: try to cast directly the ids instead creating local sessionIds
         for (int i = 0; i < count; ++i) {
             memcpy(ids[i], sessionIds[i], TEE_SESSION_ID_LEN);
         }
         memcpy(ids[0], "testingTest", sizeof("testingTest"));
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT GetSecureStop(
@@ -261,11 +261,11 @@ public:
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
-            return 0;
+            return CDMi_SUCCESS;
 
         if (!sessionIDLength) {
             fprintf(stderr, "Drm_GetSecureStop sessionID length %zu", sessionIDLength);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
         // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
@@ -274,13 +274,13 @@ public:
 
         // PlayReady doesn't like valid pointer + size 0
         DRM_BYTE* passedRawData = static_cast<DRM_BYTE*>(rawData);
-        DRM_RESULT err = Drm_GetSecureStop(m_poAppContext, uuid, passedRawData, &rawSize);
+        DRM_RESULT err = Drm_GetSecureStop(m_poAppContext.get(), uuid, passedRawData, &rawSize);
         if (err != DRM_E_BUFFERTOOSMALL) {
             fprintf(stderr, "Drm_GetSecureStop(0) returned 0x%lx\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT CommitSecureStop(
@@ -294,12 +294,11 @@ public:
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
-            return 0;
+            return CDMi_SUCCESS;
 
         if(!sessionIDLength) {
-            // TODO: argument error?
             fprintf(stderr, "Warning: sessionIDLength is zero.\n");
-            return 1;
+            return CDMi_INVALID_ARG;
         }
 
 
@@ -308,7 +307,7 @@ public:
         memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
 
         // commit it
-        DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext, uuid);
+        DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext.get(), uuid);
         if (err != DRM_SUCCESS)
         {
             // TODO: This call now fails sometimes with 0x80004005 (DRM_E_FAIL)
@@ -316,16 +315,15 @@ public:
             fprintf(stderr, "Drm_CommitSecureStop returned 0x%lx\n", (long)err);
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT CreateSystemNetflix() override
     {
-    	// Clear DRM app context.
-    	if (m_poAppContext != nullptr) {
-    	    delete m_poAppContext;
-    	}
-    	m_poAppContext = nullptr;
+        // Clear DRM app context.
+        if (m_poAppContext.get() != nullptr) {
+            m_poAppContext.reset();
+        }
 
         std::string rdir(m_readDir);
 
@@ -337,11 +335,10 @@ public:
         g_dstrDrmPath.cchString = rdir.length();
 
         // Store store location
-    	std::string store(m_storeLocation);
+        std::string store(m_storeLocation);
 
         drmStore_.pwszString = createDrmWchar(store);
         drmStore_.cchString = store.length();
-        drmStoreStr_ = store;
 
         // Init opaque buffer.
         appContextOpaqueBuffer_ = new DRM_BYTE[MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE];
@@ -349,7 +346,7 @@ public:
         // Init revocation buffer.
         pbRevocationBuffer_ = new DRM_BYTE[REVOCATION_BUFFER_SIZE];
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT InitSystemNetflix() override
@@ -362,85 +359,79 @@ public:
         err = Drm_Platform_Initialize();
         if(DRM_FAILED(err))
         {
-        	if (m_poAppContext != nullptr) {
-        	   delete m_poAppContext;
-        	}
-        	m_poAppContext = nullptr;
+            if (m_poAppContext.get() != nullptr) {
+               m_poAppContext.reset();
+            }
             fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
-            //return (OpenCDMError)ERROR_FAILED_TO_INIT;
-            return 1;
+            return CDMi_S_FALSE;
         }
         
-        if (m_poAppContext != nullptr) {
-           delete m_poAppContext;
+        if (m_poAppContext.get() != nullptr) {
+           m_poAppContext.reset();
         }
 
         // TODO: move app context to OpenCDMAccessor
-        m_poAppContext = new DRM_APP_CONTEXT;
-        memset(m_poAppContext, 0, sizeof(DRM_APP_CONTEXT));
-        err  = Drm_Initialize(m_poAppContext, nullptr,
+        m_poAppContext.reset(new DRM_APP_CONTEXT);
+
+        memset(m_poAppContext.get(), 0, sizeof(DRM_APP_CONTEXT));
+        err  = Drm_Initialize(m_poAppContext.get(), nullptr,
                               appContextOpaqueBuffer_,
                               MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
                               &drmStore_);
         if(DRM_FAILED(err)) {
-        	delete m_poAppContext;
-        	m_poAppContext = nullptr;
+            m_poAppContext.reset();
             fprintf(stderr, "Error in Drm_Initialize: 0x%08lX\n", err);
-            //return (OpenCDMError)ERROR_FAILED_TO_INIT;
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        err = Drm_Revocation_SetBuffer(m_poAppContext, pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
+        err = Drm_Revocation_SetBuffer(m_poAppContext.get(), pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
         if(DRM_FAILED(err))
         {
-            delete m_poAppContext;
-            m_poAppContext = nullptr;
+            m_poAppContext.reset();
             fprintf(stderr, "Error in Drm_Revocation_SetBuffer: 0x%08lX\n", err);
-            //return (OpenCDMError)ERROR_FAILED_TO_INIT;
-            return 1;
+            return CDMi_S_FALSE;
         }
 
         //return ERROR_NONE;
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT TeardownSystemNetflix() override
     {
         ScopedMutex lock(drmAppContextMutex_);
 
-        if(!m_poAppContext) {
-        	fprintf(stderr, "Error, no app context yet\n");
-            return 1;
+        if(!m_poAppContext.get()) {
+            fprintf(stderr, "Error, no app context yet\n");
+            return CDMi_S_FALSE;
         }
 
         DRM_RESULT err;
-        err = Drm_Reader_Commit(m_poAppContext, nullptr, nullptr);
+        err = Drm_Reader_Commit(m_poAppContext.get(), nullptr, nullptr);
         if(DRM_FAILED(err)) {
-        	fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
+            fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
         }
 
-        err = Drm_StoreMgmt_CleanupStore(m_poAppContext,
+        err = Drm_StoreMgmt_CleanupStore(m_poAppContext.get(),
                                          DRM_STORE_CLEANUP_DELETE_EXPIRED_LICENSES |
                                          DRM_STORE_CLEANUP_DELETE_REMOVAL_DATE_LICENSES,
                                          nullptr, 0, nullptr);
         if(DRM_FAILED(err))
         {
-        	fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
+            fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
         }
         // Uninitialize drm context
-        Drm_Uninitialize(m_poAppContext);
-        delete m_poAppContext;
-        m_poAppContext = nullptr;
+        Drm_Uninitialize(m_poAppContext.get());
+        m_poAppContext.reset();
 
         // Unitialize platform
         err = Drm_Platform_Uninitialize();
         if(DRM_FAILED(err))
         {
-        	fprintf(stderr, "Failed to call Drm_Platform_Unitialize\n");
-        	return 1;
+            fprintf(stderr, "Failed to call Drm_Platform_Unitialize\n");
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT DeleteKeyStore() override
@@ -451,10 +442,10 @@ public:
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_DeleteKeyStore returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT DeleteSecureStore() override
@@ -465,10 +456,10 @@ public:
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_DeleteSecureStore returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT GetKeyStoreHash(
@@ -480,17 +471,17 @@ public:
         if (keyStoreHashLength < 256)
         {
             fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
-            return 1;
+            return CDMi_S_FALSE;
         }
 
         DRM_RESULT err = Drm_GetKeyStoreHash(keyStoreHash);
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT GetSecureStoreHash(
@@ -499,20 +490,20 @@ public:
     {
         ScopedMutex lock(drmAppContextMutex_);
 
-    	if (secureStoreHashLength < 256)
-    	{
+        if (secureStoreHashLength < 256)
+        {
             fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
-            return 1;
-    	}
+            return CDMi_S_FALSE;
+        }
 
-    	DRM_RESULT err = Drm_GetSecureStoreHash(&drmStore_, secureStoreHash);
+        DRM_RESULT err = Drm_GetSecureStoreHash(&drmStore_, secureStoreHash);
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
-            return 1;
+            return CDMi_S_FALSE;
         }
 
-        return 0;
+        return CDMi_SUCCESS;
     }
 
     void OnSystemConfigurationAvailable(const std::string& configline)
@@ -524,15 +515,12 @@ public:
     }
 
 private:
-	DRM_WCHAR* drmdir_;
-	DRM_CONST_STRING drmStore_;
+    DRM_WCHAR* drmdir_;
+    DRM_CONST_STRING drmStore_;
 
-	// TODO: do we need this string?
-	std::string drmStoreStr_;
-
-	DRM_BYTE *appContextOpaqueBuffer_ = nullptr;
-	DRM_BYTE *pbRevocationBuffer_ = nullptr;
-	DRM_APP_CONTEXT * m_poAppContext; // TODO: should be an std::shared ptr?
+    DRM_BYTE *appContextOpaqueBuffer_ = nullptr;
+    DRM_BYTE *pbRevocationBuffer_ = nullptr;
+    std::shared_ptr<DRM_APP_CONTEXT> m_poAppContext;
 
     string m_readDir;
     string m_storeLocation;

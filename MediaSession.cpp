@@ -352,7 +352,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                                          &cchSilentURL,
                                          nullptr,
                                          nullptr,
-#ifdef PR_3_3						//PRv3.3 support
+#ifdef PR_3_3     // PRv3.3 support
                                          m_pbChallenge,
                                          &m_cbChallenge,
                                          nullptr);
@@ -389,7 +389,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                                          nullptr,
                                          nullptr,
                                          m_pbChallenge,
-#ifdef PR_3_3						//PRv3.3 support
+#ifdef PR_3_3     // PRv3.3 support
                                          &m_cbChallenge,
                                          nullptr));
 #else
@@ -424,7 +424,7 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
 
   ChkDR(Drm_LicenseAcq_ProcessResponse(m_poAppContext,
                                        DRM_PROCESS_LIC_RESPONSE_SIGNATURE_NOT_REQUIRED,
-#ifndef PR_3_3				//PRv3.3 support
+#ifndef PR_3_3                //PRv3.3 support
                                        nullptr,
                                        nullptr,
 #endif
@@ -596,13 +596,12 @@ CDMi_RESULT MediaKeySession::Decrypt(
     ScopedMutex systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
-    	//return ERROR_NONE;
-    	return 0;
+        return CDMi_SUCCESS;
     }
 
     if (!m_oDecryptContext) {
-    	fprintf(stderr, "Error: no decrypt context (yet?)\n");
-    	return 1;
+        fprintf(stderr, "Error: no decrypt context (yet?)\n");
+        return CDMi_S_FALSE;
     }
     
     DRM_RESULT err = DRM_SUCCESS;
@@ -623,7 +622,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to init decrypt\n");
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
@@ -649,7 +648,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
-        return 1;
+        return CDMi_S_FALSE;
     }
 
     // Call commit during the decryption of the first sample.

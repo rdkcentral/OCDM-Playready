@@ -63,23 +63,6 @@ private:
     DRM_LICENSE_RESPONSE * const dlr;
 };
 
-enum OcdmLicenseType {
-    // this is in the order of priority
-    // standard license has priority over limited duration license
-    // TODO: do we need prefix here?
-    OCDM_LICENSE_INVALID = 0,
-    OCDM_LICENSE_LIMITED_DURATION,
-    OCDM_LICENSE_STANDARD
-};
-
-enum OcdmSessionState {
-    Ocdm_LicenseAcquisitionState = 0,
-	Ocdm_InactiveDecryptionState,
-	Ocdm_ActiveDecryptionState,
-	Ocdm_InvalidState
-};
-
-
 class MediaKeySession : public IMediaKeySession, public IMediaKeySessionExt {
 private:
     enum KeyState {
@@ -105,7 +88,6 @@ public:
 
     MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData);
 
-    // TODO: introduce MediaKeySessionExt?
     MediaKeySession(
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
@@ -116,15 +98,15 @@ public:
     bool playreadyGenerateKeyRequest();
     bool ready() const { return m_eKeyState == KEY_READY; }
 
-// MediaKeySession overrides
+    // MediaKeySession overrides
     virtual void Run(
-        const IMediaKeySessionCallback *f_piMediaKeySessionCallback);
+    const IMediaKeySessionCallback *f_piMediaKeySessionCallback);
 
     virtual CDMi_RESULT Load();
 
     virtual void Update(
-        const uint8_t *f_pbKeyMessageResponse,
-        uint32_t f_cbKeyMessageResponse);
+    const uint8_t *f_pbKeyMessageResponse,
+    uint32_t f_cbKeyMessageResponse);
 
     virtual CDMi_RESULT Remove();
 
@@ -134,25 +116,25 @@ public:
     virtual const char *GetSessionId(void) const;
     virtual const char *GetKeySystem(void) const;
     virtual CDMi_RESULT Decrypt(
-        const uint8_t *f_pbSessionKey,
-        uint32_t f_cbSessionKey,
-        const uint32_t *f_pdwSubSampleMapping,
-        uint32_t f_cdwSubSampleMapping,
-        const uint8_t *f_pbIV,
-        uint32_t f_cbIV,
-        const uint8_t *f_pbData,
-        uint32_t f_cbData,
-        uint32_t *f_pcbOpaqueClearContent,
-        uint8_t **f_ppbOpaqueClearContent,
-        const uint8_t keyIdLength,
-        const uint8_t* keyId,
-        bool initWithLast15) override;
+    const uint8_t *f_pbSessionKey,
+    uint32_t f_cbSessionKey,
+    const uint32_t *f_pdwSubSampleMapping,
+    uint32_t f_cdwSubSampleMapping,
+    const uint8_t *f_pbIV,
+    uint32_t f_cbIV,
+    const uint8_t *f_pbData,
+    uint32_t f_cbData,
+    uint32_t *f_pcbOpaqueClearContent,
+    uint8_t **f_ppbOpaqueClearContent,
+    const uint8_t keyIdLength,
+    const uint8_t* keyId,
+    bool initWithLast15) override;
 
     virtual CDMi_RESULT ReleaseClearContent(
-        const uint8_t *f_pbSessionKey,
-        uint32_t f_cbSessionKey,
-        const uint32_t  f_cbClearContentOpaque,
-        uint8_t  *f_pbClearContentOpaque );
+    const uint8_t *f_pbSessionKey,
+    uint32_t f_cbSessionKey,
+    const uint32_t  f_cbClearContentOpaque,
+    uint8_t  *f_pbClearContentOpaque );
 
     uint32_t GetSessionIdExt(void) const override;
 
@@ -162,12 +144,6 @@ public:
     uint16_t PlaylevelCompressedAudio() const override;
     uint16_t PlaylevelUncompressedAudio() const override;
 
-    virtual std::string GetContentIdExt() const override;
-    virtual void SetContentIdExt(const std::string & contentId) override;
-    virtual LicenseTypeExt GetLicenseTypeExt() const override;
-    virtual void SetLicenseTypeExt(LicenseTypeExt licenseType) override;
-    virtual SessionStateExt GetSessionStateExt() const override;
-    virtual void SetSessionStateExt(SessionStateExt sessionState) override;
     virtual CDMi_RESULT SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength) override;
     virtual CDMi_RESULT GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
     virtual CDMi_RESULT CancelChallengeDataNetflix() override;
@@ -180,9 +156,9 @@ private:
 
     static DRM_RESULT DRM_CALL _PolicyCallback(const DRM_VOID *, DRM_POLICY_CALLBACK_TYPE f_dwCallbackType, 
 #ifdef PR_3_3
-        const DRM_KID *, const DRM_LID *,
+    const DRM_KID *, const DRM_LID *,
 #endif
-        const DRM_VOID *);
+    const DRM_VOID *);
 
     DRM_BYTE *m_pbOpaqueBuffer;
     DRM_DWORD m_cbOpaqueBuffer;
@@ -197,15 +173,9 @@ private:
     IMediaKeySessionCallback *m_piCallback;
 
 private:
-    std::string _contentIdExt; // TODO: remove this one
-
-private:
-	std::vector<uint8_t> mDrmHeader;
-	std::vector<uint8_t> mNounce;
-    std::string mContentId;
-    OcdmLicenseType mLicenseType; // TODO: don't use netflix enum
+    std::vector<uint8_t> mDrmHeader;
+    std::vector<uint8_t> mNounce;
     uint32_t mSessionId;
-    OcdmSessionState mSessionState; // TODO: don't use netflix stuff
     std::unique_ptr<LicenseResponse2> mLicenseResponse;
     std::vector<uint8_t> mSecureStopId;
     PlayLevels2 levels_;
@@ -214,7 +184,7 @@ protected:
     DRM_BOOL m_fCommit;
     DRM_APP_CONTEXT *m_poAppContext;
     DRM_DECRYPT_CONTEXT *m_oDecryptContext;
-    bool m_decryptInited; // TODO: keep track of this via pointer being != NULL?
+    bool m_decryptInited;
 };
 
 } // namespace CDMi
