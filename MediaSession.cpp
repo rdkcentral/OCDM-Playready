@@ -406,9 +406,6 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_LICENSE_RESPONSE oLicenseResponse = {eUnknownProtocol, 0};
 
-  // The current state MUST be KEY_PENDING otherwise error out.
-  ChkBOOL(m_eKeyState == KEY_PENDING, DRM_E_INVALIDARG);
-
   ChkArg(m_pbKeyMessageResponse && m_cbKeyMessageResponse > 0);
 
   ChkDR(Drm_LicenseAcq_ProcessResponse(m_poAppContext,
