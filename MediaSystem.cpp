@@ -227,7 +227,7 @@ public:
         return numDeleted;
     }
 
-    CDMi_RESULT GetSecureStopIds(uint8_t * ids[], uint32_t & count)
+    CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint8_t, uint32_t & count)
     {
         ScopedMutex lock(drmAppContextMutex_);
 
@@ -242,11 +242,11 @@ public:
             fprintf(stderr,"Drm_GetSecureStopIds returned 0x%lx\n", (long)err);
             return CDMi_S_FALSE;
         }
-        //TODO: try to cast directly the ids instead creating local sessionIds
+
         for (int i = 0; i < count; ++i) {
-            memcpy(ids[i], sessionIds[i], TEE_SESSION_ID_LEN);
+            memcpy(&ids[i * TEE_SESSION_ID_LEN], sessionIds[i], TEE_SESSION_ID_LEN);
         }
-        memcpy(ids[0], "testingTest", sizeof("testingTest"));
+
         return CDMi_SUCCESS;
     }
 
