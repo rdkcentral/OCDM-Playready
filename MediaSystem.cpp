@@ -164,6 +164,7 @@ public:
 
     CDMi_RESULT DestroyMediaKeySessionExt(IMediaKeySession *f_piMediaKeySession)
     {
+        ScopedMutex systemLock(drmAppContextMutex_);
         delete f_piMediaKeySession;
 
         return CDMi_SUCCESS;

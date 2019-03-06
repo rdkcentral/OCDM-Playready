@@ -61,22 +61,24 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
     if (callbackType != DRM_PLAY_OPL_CALLBACK)
         return DRM_SUCCESS;
 
-    CallbackInfo * callbackInfo = new CallbackInfo;
     const IMediaKeySessionCallback * constSessionCallback = reinterpret_cast<const IMediaKeySessionCallback *>(data);
-    callbackInfo->_callback = const_cast<IMediaKeySessionCallback *>(constSessionCallback);
+    if (constSessionCallback != nullptr) {
+        CallbackInfo * callbackInfo = new CallbackInfo;
+        callbackInfo->_callback = const_cast<IMediaKeySessionCallback *>(constSessionCallback);
 
-    // Pull out the protection levels.
-    const DRM_PLAY_OPL_EX* playLevels = static_cast<const DRM_PLAY_OPL_EX*>(outputLevels);
-    callbackInfo->_compressedVideo = playLevels->minOPL.wCompressedDigitalVideo;
-    callbackInfo->_uncompressedVideo = playLevels->minOPL.wUncompressedDigitalVideo;
-    callbackInfo->_analogVideo = playLevels->minOPL.wAnalogVideo;
-    callbackInfo->_compressedAudio = playLevels->minOPL.wCompressedDigitalAudio;
-    callbackInfo->_uncompressedAudio = playLevels->minOPL.wUncompressedDigitalAudio;
+        // Pull out the protection levels.
+        const DRM_PLAY_OPL_EX* playLevels = static_cast<const DRM_PLAY_OPL_EX*>(outputLevels);
+        callbackInfo->_compressedVideo = playLevels->minOPL.wCompressedDigitalVideo;
+        callbackInfo->_uncompressedVideo = playLevels->minOPL.wUncompressedDigitalVideo;
+        callbackInfo->_analogVideo = playLevels->minOPL.wAnalogVideo;
+        callbackInfo->_compressedAudio = playLevels->minOPL.wCompressedDigitalAudio;
+        callbackInfo->_uncompressedAudio = playLevels->minOPL.wUncompressedDigitalAudio;
 
-    // Run on a new thread, so we don't go too deep in the IPC callstack.
-    pthread_t threadId;
-    pthread_create(&threadId, nullptr, PlayLevelUpdateCallback, callbackInfo);
+        // Run on a new thread, so we don't go too deep in the IPC callstack.
+        pthread_t threadId;
+        pthread_create(&threadId, nullptr, PlayLevelUpdateCallback, callbackInfo);
 
+    }
     // All done.
     return DRM_SUCCESS;
 }
@@ -408,7 +410,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
             err = Drm_Reader_Bind_Netflix(m_poAppContext,
                                           RIGHTS,
                                           sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                          &opencdm_output_levels_callback, m_piCallback,
+                                          &opencdm_output_levels_callback, nullptr,
                                           &mSecureStopId[0],
                                           m_oDecryptContext);
             if (DRM_FAILED(err))
