@@ -107,32 +107,6 @@ uint32_t MediaKeySession::GetSessionIdExt() const
     return mSessionId;
 }
 
-uint16_t MediaKeySession::PlaylevelCompressedVideo() const
-{
-    cerr << "Null2 session is asked for PlaylevelCompressedVideo" << endl;
-    return 57;
-}
-
-uint16_t MediaKeySession::PlaylevelUncompressedVideo() const
-{
-    return 58;
-}
-
-uint16_t MediaKeySession::PlaylevelAnalogVideo() const
-{
-    return 59;
-}
-
-uint16_t MediaKeySession::PlaylevelCompressedAudio() const
-{
-    return 60;
-}
-
-uint16_t MediaKeySession::PlaylevelUncompressedAudio() const
-{
-    return 61;
-}
-
 CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength)
 {
     return CDMi_SUCCESS;
