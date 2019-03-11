@@ -86,7 +86,7 @@ private:
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData);
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, bool initiateChallengeGeneration = false);
 
     MediaKeySession(
             const uint8_t drmHeader[],
@@ -179,6 +179,7 @@ private:
     std::unique_ptr<LicenseResponse2> mLicenseResponse;
     std::vector<uint8_t> mSecureStopId;
     PlayLevels2 levels_;
+    bool mInitiateChallengeGeneration;
 
 protected:
     DRM_BOOL m_fCommit;

@@ -184,7 +184,7 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
   return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, bool initiateChallengeGeneration /* = false */)
     : m_pbOpaqueBuffer(nullptr)
     , m_cbOpaqueBuffer(0)
     , m_pbRevocationBuffer(nullptr)
@@ -195,7 +195,8 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_piCallback(nullptr)
     , m_fCommit(FALSE)
     , m_poAppContext(nullptr)
-    , m_decryptInited(false) {
+    , m_decryptInited(false)
+    , mInitiateChallengeGeneration(initiateChallengeGeneration) {
     
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
     
@@ -318,7 +319,9 @@ void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCal
     m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
     // FIXME : Custom data is not set;needs recheck.
-    //playreadyGenerateKeyRequest();
+    if (mInitiateChallengeGeneration) {
+      playreadyGenerateKeyRequest();
+    }
   } else {
       m_piCallback = nullptr;
   }

@@ -96,6 +96,7 @@ public:
     }
 
     CDMi_RESULT CreateMediaKeySession(
+        const std::string & keySystem,
         int32_t licenseType,
         const char *f_pwszInitDataType,
         const uint8_t *f_pbInitData,
@@ -104,7 +105,9 @@ public:
         uint32_t f_cbCDMData, 
         IMediaKeySession **f_ppiMediaKeySession) {
 
-        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData);
+        bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
+
+        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, !isNetflixPlayready);
  
         return CDMi_SUCCESS; 
     }
