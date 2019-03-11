@@ -314,15 +314,13 @@ public:
         DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext.get(), uuid);
         if (err != DRM_SUCCESS)
         {
-            // TODO: This call now fails sometimes with 0x80004005 (DRM_E_FAIL)
-            //       This seems to be introduced by 86d1dea5db7c4176920b91a50f894bb52039cd70 (Netflix Mutex -> WPEFramework CriticalSection)
             fprintf(stderr, "Drm_CommitSecureStop returned 0x%lx\n", (long)err);
         }
 
         return CDMi_SUCCESS;
     }
 
-    CDMi_RESULT CreateSystemNetflix() override
+    CDMi_RESULT CreateSystemExt() override
     {
         // Clear DRM app context.
         if (m_poAppContext.get() != nullptr) {
@@ -353,7 +351,7 @@ public:
         return CDMi_SUCCESS;
     }
 
-    CDMi_RESULT InitSystemNetflix() override
+    CDMi_RESULT InitSystemExt() override
     {
         ScopedMutex lock(drmAppContextMutex_);
 
@@ -400,7 +398,7 @@ public:
         return CDMi_SUCCESS;
     }
 
-    CDMi_RESULT TeardownSystemNetflix() override
+    CDMi_RESULT TeardownSystemExt() override
     {
         ScopedMutex lock(drmAppContextMutex_);
 

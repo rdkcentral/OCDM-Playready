@@ -145,8 +145,8 @@ public:
     uint16_t PlaylevelUncompressedAudio() const override;
 
     virtual CDMi_RESULT SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength) override;
-    virtual CDMi_RESULT GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
-    virtual CDMi_RESULT CancelChallengeDataNetflix() override;
+    virtual CDMi_RESULT GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
+    virtual CDMi_RESULT CancelChallengeDataExt() override;
     virtual CDMi_RESULT StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId) override;
     virtual CDMi_RESULT InitDecryptContextByKid() override;
     virtual CDMi_RESULT CleanDecryptContext() override;

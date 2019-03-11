@@ -266,7 +266,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
     return result;
 }
 
-CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL)
+CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL)
 {
     DRM_RESULT err;
 
@@ -341,7 +341,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataNetflix(uint8_t * challenge, uint32
     return CDMi_SUCCESS;
 }
 
-CDMi_RESULT MediaKeySession::CancelChallengeDataNetflix()
+CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
 {
     ScopedMutex systemLock(drmAppContextMutex_);
     DRM_RESULT err = Drm_LicenseAcq_CancelChallenge_Netflix(m_poAppContext, &mNounce[0]);
