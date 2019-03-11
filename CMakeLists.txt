@@ -12,8 +12,7 @@ find_package(PlayReady REQUIRED)
 add_library(${MODULE_NAME} SHARED
     MediaSession.cpp
     MediaSystem.cpp
-    MediaSessionExt.cpp
-    MediaSystemExt.cpp)
+    MediaSessionExt.cpp)
 
 set_target_properties(${MODULE_NAME} PROPERTIES
         CXX_STANDARD 11
