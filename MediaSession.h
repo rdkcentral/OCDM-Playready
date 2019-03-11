@@ -45,7 +45,7 @@
 
 namespace CDMi {
 
-struct PlayLevels2 {
+struct PlayLevels {
     uint16_t compressedDigitalVideoLevel_;   //!< Compressed digital video output protection level.
     uint16_t uncompressedDigitalVideoLevel_; //!< Uncompressed digital video output protection level.
     uint16_t analogVideoLevel_;              //!< Analog video output protection level.
@@ -53,10 +53,10 @@ struct PlayLevels2 {
     uint16_t uncompressedDigitalAudioLevel_; //!< Uncompressed digital audio output protection level.
 };
 
-class LicenseResponse2 {
+class LicenseResponse {
 public:
-    LicenseResponse2() : dlr(new DRM_LICENSE_RESPONSE) {}
-    ~LicenseResponse2() { delete dlr; }
+    LicenseResponse() : dlr(new DRM_LICENSE_RESPONSE) {}
+    ~LicenseResponse() { delete dlr; }
     DRM_LICENSE_RESPONSE * get() { return dlr; }
     void clear() { memset(dlr, 0, sizeof(DRM_LICENSE_RESPONSE)); }
 private:
@@ -176,9 +176,9 @@ private:
     std::vector<uint8_t> mDrmHeader;
     std::vector<uint8_t> mNounce;
     uint32_t mSessionId;
-    std::unique_ptr<LicenseResponse2> mLicenseResponse;
+    std::unique_ptr<LicenseResponse> mLicenseResponse;
     std::vector<uint8_t> mSecureStopId;
-    PlayLevels2 levels_;
+    PlayLevels levels_;
     bool mInitiateChallengeGeneration;
 
 protected:

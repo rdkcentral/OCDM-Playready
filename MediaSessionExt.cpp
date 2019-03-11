@@ -93,7 +93,7 @@ MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLe
    , m_decryptInited(false)
    , m_oDecryptContext(nullptr)
 {
-    mLicenseResponse = std::unique_ptr<LicenseResponse2>(new LicenseResponse2());
+    mLicenseResponse = std::unique_ptr<LicenseResponse>(new LicenseResponse());
     mSecureStopId.clear();
 
     // TODO: can we do this nicer?
