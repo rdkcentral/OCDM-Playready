@@ -473,113 +473,6 @@ CDMi_RESULT MediaKeySession::Close(void) {
     return CDMi_SUCCESS;
 }
 
-/*
-CDMi_RESULT MediaKeySession::Decrypt(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t, // keyIdLength
-    const uint8_t* // keyId
-    )
-{
-  CDMi_RESULT status = CDMi_S_FALSE;
-  DRM_AES_COUNTER_MODE_CONTEXT oAESContext = {0};
-  DRM_RESULT dr = DRM_SUCCESS;
-
-  uint8_t *ivData = (uint8_t *) f_pbIV;
-  uint8_t temp;
-
-#ifdef PR_3_3
-    DRM_DWORD rgdwMappings[2];
-    if( f_pcbOpaqueClearContent == nullptr || f_ppbOpaqueClearContent == nullptr )
-    {
-        dr = DRM_E_INVALIDARG;
-        goto ErrorExit;
-    }
-
-    *f_pcbOpaqueClearContent = 0;
-    *f_ppbOpaqueClearContent = nullptr;
-
-    ChkBOOL(m_eKeyState == KEY_READY, DRM_E_INVALIDARG);
-    ChkArg(f_pbIV != nullptr && f_cbIV == sizeof(DRM_UINT64));
-#else
-  ChkDR(Drm_Reader_InitDecrypt(&m_oDecryptContext, nullptr, 0));
-#endif
-
-  // FIXME: IV bytes need to be swapped ???
-  for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-    temp = ivData[i];
-    ivData[i] = ivData[f_cbIV - i - 1];
-    ivData[f_cbIV - i - 1] = temp;
-  }
-
-  MEMCPY(&oAESContext.qwInitializationVector, ivData, f_cbIV);
-
-#ifdef PR_3_3
-    if ( nullptr == f_pdwSubSampleMapping )
-    {
-        rgdwMappings[0] = 0;
-        rgdwMappings[1] = payloadDataSize;
-        f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-        f_cdwSubSampleMapping = NO_OF(rgdwMappings);
-    }
-
-    ChkDR(Drm_Reader_DecryptOpaque(
-        &m_oDecryptContext,
-        f_cdwSubSampleMapping,
-        reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-        oAESContext.qwInitializationVector,
-        payloadDataSize,
-        (DRM_BYTE *) payloadData,
-        reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
-        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent)));
-#else
-  ChkDR(Drm_Reader_Decrypt(&m_oDecryptContext, &oAESContext, (DRM_BYTE *) payloadData,  payloadDataSize));
-#endif
-     
-  // Call commit during the decryption of the first sample.
-  if (!m_fCommit) {
-    ChkDR(Drm_Reader_Commit(m_poAppContext, _PolicyCallback, nullptr));
-    m_fCommit = TRUE;
-  } 
-
-#ifndef PR_3_3
-  // Return clear content.
-  *f_pcbOpaqueClearContent = payloadDataSize;
-  *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-#endif
-  status = CDMi_SUCCESS;
-
-  return status;
-
-ErrorExit:
-  if (DRM_FAILED(dr)) {
-    const DRM_CHAR* description;
-    DRM_ERR_GetErrorNameFromCode(dr, &description);
-    printf("playready error: %s\n", description);
-
-#ifdef PR_3_3
-        if( f_pcbOpaqueClearContent != nullptr )
-          {
-              *f_pcbOpaqueClearContent = 0;
-          }
-          if( f_ppbOpaqueClearContent != nullptr )
-          {
-              *f_ppbOpaqueClearContent = nullptr;
-          }
-#endif
-  }
-  return status;
-}
-*/
-
 CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t *f_pbSessionKey,
     uint32_t f_cbSessionKey,
@@ -595,7 +488,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t*, // keyId
     bool initWithLast15)
 {
-
     ScopedMutex systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
