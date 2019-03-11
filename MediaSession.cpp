@@ -501,7 +501,23 @@ CDMi_RESULT MediaKeySession::Decrypt(
     
     DRM_RESULT err = DRM_SUCCESS;
     if (!initWithLast15) {
-        err = Drm_Reader_InitDecrypt(m_oDecryptContext, nullptr, 0);
+/* PRv3.3 support */
+#ifdef PR_3_3
+      DRM_DWORD rgdwMappings[2];
+      if( f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL )
+      {
+          dr = DRM_E_INVALIDARG;
+          goto ErrorExit;
+      }
+
+      *f_pcbOpaqueClearContent = 0;
+      *f_ppbOpaqueClearContent = NULL;
+
+      ChkBOOL(m_eKeyState == KEY_READY, DRM_E_INVALIDARG);
+      ChkArg(f_pbIV != NULL && f_cbIV == sizeof(DRM_UINT64));
+#else
+      err = Drm_Reader_InitDecrypt(m_oDecryptContext, nullptr, 0);
+#endif
     } else {
         // Initialize the decryption context for Cocktail packaged
         // content. This is a no-op for AES packaged content.
@@ -539,12 +555,32 @@ CDMi_RESULT MediaKeySession::Decrypt(
        MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
     }
 
+#ifdef PR_3_3
+    if ( NULL == f_pdwSubSampleMapping )
+    {
+        rgdwMappings[0] = 0;
+        rgdwMappings[1] = payloadDataSize;
+        f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
+        f_cdwSubSampleMapping = NO_OF(rgdwMappings);
+    }
+
+    ChkDR(Drm_Reader_DecryptOpaque(
+        &m_oDecryptContext,
+        f_cdwSubSampleMapping,
+        reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
+        oAESContext.qwInitializationVector,
+        payloadDataSize,
+        (DRM_BYTE *) payloadData,
+        reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
+        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent)));
+#else
     err = Drm_Reader_Decrypt(m_oDecryptContext, &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
         return CDMi_S_FALSE;
     }
+#endif
 
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
@@ -553,9 +589,23 @@ CDMi_RESULT MediaKeySession::Decrypt(
         m_fCommit = TRUE;
     }
 
+#ifndef PR_3_3
     // Return clear content.
     *f_pcbOpaqueClearContent = payloadDataSize;
     *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
+#endif
+
+/* PRv3.3 support */
+#ifdef PR_3_3
+        if( f_pcbOpaqueClearContent != NULL )
+          {
+              *f_pcbOpaqueClearContent = 0;
+          }
+          if( f_ppbOpaqueClearContent != NULL )
+          {
+              *f_ppbOpaqueClearContent = NULL;
+          }
+#endif
 
     return CDMi_SUCCESS;
 }
