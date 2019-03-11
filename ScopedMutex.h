@@ -2,10 +2,6 @@
 
 #include <WPEFramework/core/Sync.h>
 
-// TODO: does something like this exist in WPEFramework?
-//       If not, maybe copy? If yes, replace this one with the original one.
-// TODO: This is just a simpler version of Netflix's ScopedMutex (worry about license?)
-// TODO: rename
 class ScopedMutex
 {
 public:
