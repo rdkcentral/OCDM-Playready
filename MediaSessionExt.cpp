@@ -103,12 +103,13 @@ MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLe
 
 uint32_t MediaKeySession::GetSessionIdExt() const
 {
-    cerr << "Null2 session is asked for Session ID Ext" << endl;
     return mSessionId;
 }
 
 CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t drmHeaderLength)
 {
+    mDrmHeader.resize(drmHeaderLength);
+    memcpy(&mDrmHeader[0], drmHeader, drmHeaderLength);
     return CDMi_SUCCESS;
 }
 
