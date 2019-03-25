@@ -440,6 +440,10 @@ ErrorExit:
     printf("playready error: %s\n", description);
 
     m_eKeyState = KEY_ERROR;
+
+    // The upper layer is blocked waiting for an update, let's wake it.
+    if (m_piCallback)
+      m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
   }
   return;
 }
