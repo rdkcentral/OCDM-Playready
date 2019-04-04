@@ -23,6 +23,7 @@ set(DRM_PLUGIN_SOURCES
     MediaSystem.cpp)
 
 # add the library
+link_directories(${PLAYREADY_LIBRARY_DIRS})
 add_library(${DRM_PLUGIN_NAME} SHARED ${DRM_PLUGIN_SOURCES})
 target_compile_definitions(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_FLAGS})
 target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_INCLUDE_DIRS})
