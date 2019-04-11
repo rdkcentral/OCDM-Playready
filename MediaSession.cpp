@@ -452,7 +452,9 @@ CDMi_RESULT MediaKeySession::Remove(void) {
   return CDMi_S_FALSE;
 }
 
-CDMi_RESULT MediaKeySession::Close(void) {}
+CDMi_RESULT MediaKeySession::Close(void) {
+  return CDMi_S_FALSE;
+}
 
 CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t *f_pbSessionKey,
