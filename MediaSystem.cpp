@@ -106,8 +106,7 @@ public:
         IMediaKeySession **f_ppiMediaKeySession) {
 
         bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
-
-        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, !isNetflixPlayready);
+        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, !isNetflixPlayready);
  
         return CDMi_SUCCESS; 
     }

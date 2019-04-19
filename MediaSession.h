@@ -86,13 +86,12 @@ private:
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, bool initiateChallengeGeneration = false);
-
     MediaKeySession(
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
             DRM_APP_CONTEXT * poAppContext);
 
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, bool initiateChallengeGeneration = false);
     ~MediaKeySession();
 
     bool playreadyGenerateKeyRequest();
@@ -164,6 +163,7 @@ private:
     DRM_BYTE *m_pbChallenge;
     DRM_DWORD m_cbChallenge;
     DRM_CHAR *m_pchSilentURL;  
+    std::string m_customData;
     IMediaKeySessionCallback *m_piCallback;
 
 private:

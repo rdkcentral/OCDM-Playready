@@ -184,8 +184,9 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
   return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, bool initiateChallengeGeneration /* = false */)
-    : m_pbOpaqueBuffer(nullptr)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, bool initiateChallengeGeneration /* = false */)
+    : m_poAppContext(nullptr)
+    , m_pbOpaqueBuffer(nullptr) 
     , m_cbOpaqueBuffer(0)
     , m_pbRevocationBuffer(nullptr)
     , m_eKeyState(KEY_INIT)
@@ -196,9 +197,10 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_fCommit(FALSE)
     , m_poAppContext(nullptr)
     , m_decryptInited(false)
-    , mInitiateChallengeGeneration(initiateChallengeGeneration) {
-    
-    m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
+    , mInitiateChallengeGeneration(initiateChallengeGeneration)
+    , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
+{
+  m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
     
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_ID oSessionID;
@@ -318,7 +320,6 @@ void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCal
   if (f_piMediaKeySessionCallback) {
     m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
-    // FIXME : Custom data is not set;needs recheck.
     if (mInitiateChallengeGeneration) {
       playreadyGenerateKeyRequest();
     }
@@ -348,20 +349,20 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
   dr = Drm_LicenseAcq_GenerateChallenge(m_poAppContext,
                                         g_rgpdstrRights,
                                         sizeof(g_rgpdstrRights) / sizeof(DRM_CONST_STRING *),
-                                         nullptr,
-                                         nullptr, // FIXME : Custom data
-                                         0, // FIXME : Custon data size 
-                                         nullptr,
-                                         &cchSilentURL,
-                                         nullptr,
-                                         nullptr,
-#ifdef PR_3_3     // PRv3.3 support
-                                         m_pbChallenge,
-                                         &m_cbChallenge,
-                                         nullptr);
+                                        NULL,
+                                        !m_customData.empty() ? m_customData.c_str() : nullptr,
+                                        m_customData.size(),
+                                        NULL,
+                                        &cchSilentURL,
+                                        NULL,
+                                        NULL,
+#ifdef PR_3_3						//PRv3.3 support
+                                        m_pbChallenge,
+                                        &m_cbChallenge,
+                                        NULL);
 #else
-                                         nullptr,
-                                         &m_cbChallenge);
+                                        NULL,
+                                        &m_cbChallenge);
 #endif
 
   if (dr == DRM_E_BUFFERTOOSMALL) {
@@ -384,9 +385,9 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
   ChkDR(Drm_LicenseAcq_GenerateChallenge(m_poAppContext,
                                          g_rgpdstrRights,
                                          sizeof(g_rgpdstrRights) / sizeof(DRM_CONST_STRING *),
-                                         nullptr,
-                                         nullptr, // FIXME : Custom data
-                                         0, // FIXME : Custon data size 
+                                         NULL,
+                                         !m_customData.empty() ? m_customData.c_str() : nullptr,
+                                         m_customData.size(),
                                          m_pchSilentURL,
                                          &cchSilentURL,
                                          nullptr,
@@ -410,6 +411,8 @@ ErrorExit:
     const DRM_CHAR* description;
     DRM_ERR_GetErrorNameFromCode(dr, &description);
     printf("playready error: %s\n", description);
+    if (m_piCallback)
+        m_piCallback->OnKeyMessage((const uint8_t *) "", 0, "");
   }
   return false;
 }
@@ -470,7 +473,7 @@ CDMi_RESULT MediaKeySession::Remove(void) {
 }
 
 CDMi_RESULT MediaKeySession::Close(void) {
-    return CDMi_SUCCESS;
+  return CDMi_S_FALSE;
 }
 
 CDMi_RESULT MediaKeySession::Decrypt(
