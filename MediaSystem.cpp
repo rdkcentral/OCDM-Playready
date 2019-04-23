@@ -15,14 +15,15 @@
  * limitations under the License.
  */
 
+#include "MediaSession.h"
+
 #include <memory>
 #include <vector>
 #include <iostream>
 #include <string.h>
 
-#include <interfaces/IDRM.h>
-#include <core/core.h>
-#include "MediaSession.h"
+#include <cdmi.h>
+#include <WPEFramework/core/core.h>
 
 #include "ScopedMutex.h"
 

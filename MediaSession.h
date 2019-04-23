@@ -17,9 +17,6 @@
 
 #pragma once
 
-//#include "cdmi.h"
-#include <interfaces/IDRM.h>
-
 #include <drmbuild_oem.h>
 #include <drmmanager.h>
 #include <drmmathsafe.h>
@@ -42,6 +39,7 @@
 
 #include <string.h>
 #include <memory>
+#include <cdmi.h>
 
 namespace CDMi {
 

@@ -1,30 +1,28 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 2.8)
 project(DRMPlayready)
 
-find_package(WPEFramework)
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(DRM_PLUGIN_NAME "PlayReady")
 
-set(MODULE_NAME Playready)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+if(NOT NAMESPACE)
+   set(NAMESPACE "WPEFramework")
+endif()
 
 find_package(PlayReady REQUIRED)
-
-add_library(${MODULE_NAME} SHARED
-    MediaSession.cpp
-    MediaSystem.cpp
-    MediaSessionExt.cpp)
-
-set_target_properties(${MODULE_NAME} PROPERTIES
-        CXX_STANDARD 11
-        CXX_STANDARD_REQUIRED YES)
-
 include("${PLAYREADY_INCLUDE}/playready.cmake")
 
-target_include_directories(${MODULE_NAME}
-    PRIVATE
-    "${CMAKE_SYSROOT}/usr/include"
-    "${CMAKE_SYSROOT}/usr/include/${NAMESPACE}"
-    ${PLAYREADY_INCLUDE_DIRS})
+file(GLOB DRM_PLUGIN_INCLUDES *.h)
+
+set(DRM_PLUGIN_LIBS 
+    ${PLAYREADY_LIBRARIES})
+
+set(DRM_PLUGIN_SOURCES 
+    MediaSession.cpp 
+    MediaSystem.cpp
+    MediaSessionExt.cpp)
 
 # add the library
 link_directories(${PLAYREADY_LIBRARY_DIRS})
@@ -35,12 +33,4 @@ target_link_libraries(${DRM_PLUGIN_NAME} ${DRM_PLUGIN_LIBS})
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES SUFFIX ".drm")
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES PREFIX "")
 
-target_link_libraries(${MODULE_NAME}
-    PRIVATE
-        PlayReady::PlayReady)
-
-# Library installation section
-set_target_properties(${MODULE_NAME} PROPERTIES SUFFIX ".drm")
-set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
-
-install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/WPEFramework/OCDM)
+install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${NAMESPACE}/OCDM)

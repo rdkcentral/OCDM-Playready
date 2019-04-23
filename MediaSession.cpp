@@ -195,7 +195,6 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_pchSilentURL(nullptr) 
     , m_piCallback(nullptr)
     , m_fCommit(FALSE)
-    , m_poAppContext(nullptr)
     , m_decryptInited(false)
     , mInitiateChallengeGeneration(initiateChallengeGeneration)
     , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
