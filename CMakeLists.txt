@@ -11,7 +11,8 @@ if(NOT NAMESPACE)
    set(NAMESPACE "WPEFramework")
 endif()
 
-find_package(PlayReady)
+find_package(PlayReady REQUIRED)
+include("${PLAYREADY_INCLUDE}/playready.cmake")
 
 file(GLOB DRM_PLUGIN_INCLUDES *.h)
 
@@ -20,7 +21,8 @@ set(DRM_PLUGIN_LIBS
 
 set(DRM_PLUGIN_SOURCES 
     MediaSession.cpp 
-    MediaSystem.cpp)
+    MediaSystem.cpp
+    MediaSessionExt.cpp)
 
 # add the library
 link_directories(${PLAYREADY_LIBRARY_DIRS})
