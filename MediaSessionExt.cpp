@@ -84,7 +84,7 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
 }
 
 
-MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext)
+MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration /* = false */)
    : m_poAppContext(poAppContext)
    , m_pbOpaqueBuffer(nullptr)
    , m_pbRevocationBuffer(nullptr)
@@ -92,6 +92,7 @@ MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLe
    , m_pchSilentURL(nullptr)
    , m_decryptInited(false)
    , m_oDecryptContext(nullptr)
+   , mInitiateChallengeGeneration(initiateChallengeGeneration)
 {
     mLicenseResponse = std::unique_ptr<LicenseResponse>(new LicenseResponse());
     mSecureStopId.clear();
@@ -175,9 +176,7 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
 {
     // open scope for DRM_APP_CONTEXT mutex
     ScopedMutex systemLock(drmAppContextMutex_);
-
     DRM_RESULT err;
-
     // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
     // simulataneous decryption support
     err = Drm_Reinitialize(m_poAppContext);
@@ -186,7 +185,6 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
         return CDMi_S_FALSE;
     }
-
     err = Drm_Content_SetProperty(m_poAppContext,
                                   DRM_CSP_AUTODETECT_HEADER,
                                   &mDrmHeader[0],
@@ -196,18 +194,13 @@ CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
         fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
         return CDMi_S_FALSE;
     }
-    
     if (m_decryptInited) {
         return CDMi_SUCCESS;
     }
-
     CDMi_RESULT result = CDMi_SUCCESS;
-
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
-
     //Create a decrypt context and bind it with the drm context.
     memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
-
     if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
         err = Drm_Reader_Bind_Netflix(m_poAppContext,
                                       RIGHTS,

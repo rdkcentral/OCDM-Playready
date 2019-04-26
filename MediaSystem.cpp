@@ -153,12 +153,13 @@ public:
     }
 
     CDMi_RESULT CreateMediaKeySessionExt(
+            const std::string& keySystem,
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
             IMediaKeySessionExt** session) override
     {
-
-        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext.get());
+        bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
+        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext.get(), !isNetflixPlayready);
 
         fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
 

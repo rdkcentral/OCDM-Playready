@@ -87,7 +87,7 @@ public:
     MediaKeySession(
             const uint8_t drmHeader[],
             uint32_t drmHeaderLength,
-            DRM_APP_CONTEXT * poAppContext);
+            DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration = false);
 
     MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, bool initiateChallengeGeneration = false);
     ~MediaKeySession();
