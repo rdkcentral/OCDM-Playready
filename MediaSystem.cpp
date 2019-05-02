@@ -120,8 +120,11 @@ public:
     }
 
     CDMi_RESULT DestroyMediaKeySession(IMediaKeySession *f_piMediaKeySession) {
+        MediaKeySession * mediaKeySession = dynamic_cast<MediaKeySession *>(f_piMediaKeySession);
+        ASSERT((mediaKeySession != nullptr) && "Expected a locally allocated MediaKeySession");
 
-        f_piMediaKeySession->UninitializeContext();
+        // TODO: is this call still needed? Can't we move it to the destructor?
+        mediaKeySession->UninitializeContext();
         delete f_piMediaKeySession;
 
         return CDMi_SUCCESS; 
