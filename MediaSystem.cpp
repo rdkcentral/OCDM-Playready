@@ -69,12 +69,15 @@ private:
             , StoreLocation() {
             Add("read-dir", &ReadDir);
             Add("store-location", &StoreLocation);
+            Add("home-path", &HomePath);
         }
         Config (const Config& copy) 
             : ReadDir(copy.ReadDir)
-            , StoreLocation(copy.StoreLocation) {
+            , StoreLocation(copy.StoreLocation)
+            , HomePath(copy.HomePath) {
             Add("read-dir", &ReadDir);
             Add("store-location", &StoreLocation);
+            Add("home-path", &HomePath);
         }
         virtual ~Config() {
         }
@@ -82,6 +85,7 @@ private:
     public:
         WPEFramework::Core::JSON::String ReadDir;
         WPEFramework::Core::JSON::String StoreLocation;
+        WPEFramework::Core::JSON::String HomePath;
     };
 
 private:
@@ -514,10 +518,17 @@ public:
 
     void OnSystemConfigurationAvailable(const std::string& configline)
     {
-        Config config; 
+        Config config;
         config.FromString(configline);
         m_readDir = config.ReadDir.Value();
         m_storeLocation = config.StoreLocation.Value();
+
+        string homePath = config.HomePath.Value();
+        if(!homePath.empty()) {
+            WPEFramework::Core::SystemInfo::SetEnvironment(_T("HOME"), homePath.c_str());
+        } else {
+            fprintf(stderr, "Error: could not set HOME variable. SecureStop functionality may not work!\n");
+        }
     }
 
 private:
