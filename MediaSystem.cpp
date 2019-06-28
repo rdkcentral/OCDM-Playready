@@ -24,6 +24,7 @@
 
 #include <cdmi.h>
 #include <WPEFramework/core/core.h>
+#include <WPEFramework/plugins/plugins.h>
 
 #include "ScopedMutex.h"
 
@@ -58,36 +59,6 @@ static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
 namespace CDMi {
 
 class PlayReady : public IMediaKeys, public IMediaKeysExt {
-private:
-    class Config : public WPEFramework::Core::JSON::Container {
-    private:
-        Config& operator= (const Config&);
-
-    public:
-        Config () 
-            : ReadDir()
-            , StoreLocation() {
-            Add("read-dir", &ReadDir);
-            Add("store-location", &StoreLocation);
-            Add("home-path", &HomePath);
-        }
-        Config (const Config& copy) 
-            : ReadDir(copy.ReadDir)
-            , StoreLocation(copy.StoreLocation)
-            , HomePath(copy.HomePath) {
-            Add("read-dir", &ReadDir);
-            Add("store-location", &StoreLocation);
-            Add("home-path", &HomePath);
-        }
-        virtual ~Config() {
-        }
-
-    public:
-        WPEFramework::Core::JSON::String ReadDir;
-        WPEFramework::Core::JSON::String StoreLocation;
-        WPEFramework::Core::JSON::String HomePath;
-    };
-
 private:
     PlayReady (const PlayReady&) = delete;
     PlayReady& operator= (const PlayReady&) = delete;
@@ -516,19 +487,17 @@ public:
         return CDMi_SUCCESS;
     }
 
-    void OnSystemConfigurationAvailable(const std::string& configline)
+    void OnSystemConfigurationAvailable(const WPEFramework::PluginHost::IShell * shell, const std::string& configline)
     {
-        Config config;
-        config.FromString(configline);
-        m_readDir = config.ReadDir.Value();
-        m_storeLocation = config.StoreLocation.Value();
+        string persistentPath = shell->PersistentPath() + string("/playready");
+        string statePath = persistentPath + "/state"; // To store rollback clock state etc
+        m_readDir = persistentPath + "/playready";
+        m_storeLocation = persistentPath + "/playready/storage/drmstore";
 
-        string homePath = config.HomePath.Value();
-        if(!homePath.empty()) {
-            WPEFramework::Core::SystemInfo::SetEnvironment(_T("HOME"), homePath.c_str());
-        } else {
-            fprintf(stderr, "Error: could not set HOME variable. SecureStop functionality may not work!\n");
-        }
+        WPEFramework::Core::Directory stateDir(statePath.c_str());
+        stateDir.Create();
+
+        WPEFramework::Core::SystemInfo::SetEnvironment(_T("HOME"), statePath);
     }
 
 private:
