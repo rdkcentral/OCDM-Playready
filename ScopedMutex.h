@@ -1,6 +1,6 @@
 #pragma once
 
-#include <WPEFramework/core/Sync.h>
+#include <core/Sync.h>
 
 class ScopedMutex
 {
