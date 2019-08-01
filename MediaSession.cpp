@@ -23,10 +23,12 @@
 #include <string.h>
 #include <vector>
 #include <sys/utsname.h>
-
-#include "ScopedMutex.h"
+#include <WPEFramework/core/core.h>
 
 extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
+
+using WPEFramework::Core::SafeSyncType;
+using WPEFramework::Core::CriticalSection;
 
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
@@ -490,7 +492,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t*, // keyId
     bool initWithLast15)
 {
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
         return CDMi_SUCCESS;

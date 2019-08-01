@@ -26,7 +26,10 @@
 #include <WPEFramework/core/core.h>
 #include <WPEFramework/plugins/plugins.h>
 
-#include "ScopedMutex.h"
+#include <WPEFramework/core/core.h>
+
+using WPEFramework::Core::SafeSyncType;
+using WPEFramework::Core::CriticalSection;
 
 using namespace std;
 
@@ -113,7 +116,7 @@ public:
        fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
        //return 46;
 
-       ScopedMutex lock(drmAppContextMutex_);
+       SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
        DRM_UINT64 utctime64;
        DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext.get(), &utctime64);
@@ -146,7 +149,7 @@ public:
 
     CDMi_RESULT DestroyMediaKeySessionExt(IMediaKeySession *f_piMediaKeySession)
     {
-        ScopedMutex systemLock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
         delete f_piMediaKeySession;
 
         return CDMi_SUCCESS;
@@ -168,7 +171,7 @@ public:
 
     uint32_t GetLdlSessionLimit() const override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         uint32_t ldlLimit = 0;
         DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext.get(), &ldlLimit);
@@ -182,13 +185,13 @@ public:
 
     bool IsSecureStopEnabled() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
         return static_cast<bool>(Drm_SupportSecureStop());
     }
 
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
         Drm_TurnSecureStop(static_cast<int>(enable));
 
         return CDMi_SUCCESS;
@@ -196,7 +199,7 @@ public:
 
     uint32_t ResetSecureStops() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
@@ -212,7 +215,7 @@ public:
 
     CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint8_t, uint32_t & count)
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         // if secure stop is not supported, return NotAllowed
         DRM_BOOL supported = Drm_SupportSecureStop();
@@ -239,7 +242,7 @@ public:
             uint8_t * rawData,
             uint16_t & rawSize)
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
@@ -272,7 +275,7 @@ public:
             const uint8_t serverResponse[],
             uint32_t serverResponseLength) override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
@@ -332,7 +335,7 @@ public:
 
     CDMi_RESULT InitSystemExt() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         DRM_RESULT err;
 
@@ -379,7 +382,7 @@ public:
 
     CDMi_RESULT TeardownSystemExt() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         if(!m_poAppContext.get()) {
             fprintf(stderr, "Error, no app context yet\n");
@@ -417,7 +420,7 @@ public:
 
     CDMi_RESULT DeleteKeyStore() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         DRM_RESULT err = Drm_DeleteKeyStore();
         if (err != DRM_SUCCESS)
@@ -431,7 +434,7 @@ public:
 
     CDMi_RESULT DeleteSecureStore() override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
         if (err != DRM_SUCCESS)
@@ -447,7 +450,7 @@ public:
             uint8_t keyStoreHash[],
             uint32_t keyStoreHashLength) override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         if (keyStoreHashLength < 256)
         {
@@ -469,7 +472,7 @@ public:
             uint8_t secureStoreHash[],
             uint32_t secureStoreHashLength) override
     {
-        ScopedMutex lock(drmAppContextMutex_);
+        SafeSyncType<CriticalSection> lock(drmAppContextMutex_);
 
         if (secureStoreHashLength < 256)
         {

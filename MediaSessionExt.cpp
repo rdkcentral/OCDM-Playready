@@ -4,11 +4,14 @@
 #include <stdio.h>
 #include <sstream>
 
-#include "ScopedMutex.h"
-
 using namespace std;
 
+#include <WPEFramework/core/core.h>
+
 extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
+
+using WPEFramework::Core::SafeSyncType;
+using WPEFramework::Core::CriticalSection;
 
 // The rights we want to request.
 const DRM_WCHAR PLAY[] = { ONE_WCHAR('P', '\0'),
@@ -117,7 +120,7 @@ CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t dr
 CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, uint8_t * secureStopId)
 {
     // open scope for DRM_APP_CONTEXT mutex
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
 
     // Make sure PlayReady still expects a 16 byte array.
     ASSERT(TEE_SESSION_ID_LEN == 16);
@@ -175,7 +178,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
 {
     // open scope for DRM_APP_CONTEXT mutex
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
     DRM_RESULT err;
     // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
     // simulataneous decryption support
@@ -238,7 +241,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 {
     DRM_RESULT err;
 
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
 
     // sanity check for drm header
     if (mDrmHeader.size() == 0)
@@ -311,7 +314,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 
 CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
 {
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
     DRM_RESULT err = Drm_LicenseAcq_CancelChallenge_Netflix(m_poAppContext, &mNounce[0]);
     if (DRM_FAILED(err)) {
         fprintf(stderr, "Error Drm_LicenseAcq_CancelChallenge_Netflix: 0x%08lx\n", static_cast<unsigned long>(err));
@@ -323,7 +326,7 @@ CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
 CDMi_RESULT MediaKeySession::CleanDecryptContext()
 {
     // open scope for DRM_APP_CONTEXT mutex
-    ScopedMutex systemLock(drmAppContextMutex_);
+    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
     DRM_RESULT err;
 
     CDMi_RESULT result = CDMi_SUCCESS;
