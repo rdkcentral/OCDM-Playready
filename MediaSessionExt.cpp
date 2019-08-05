@@ -127,11 +127,6 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 
     memset(secureStopId, 0, TEE_SESSION_ID_LEN);
 
-    // std::vector<uint8_t> localLicenseData = licenseData;
-    std::vector<uint8_t> localLicenseData;
-    localLicenseData.resize(licenseDataSize);
-    memcpy(&localLicenseData[0], licenseData, licenseDataSize);
-
     DRM_RESULT err;
 
     // reinitialze DRM_APP_CONTEXT and set DRM header for current session
@@ -153,6 +148,11 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     }
 
     mLicenseResponse->clear();
+
+    // For whatever reason Drm_LicenseAcq_ProcessResponse_Netflix needs a non-const pointer to the license data...
+    std::vector<uint8_t> localLicenseData;
+    localLicenseData.resize(licenseDataSize);
+    memcpy(&localLicenseData[0], licenseData, licenseDataSize);
 
     err = Drm_LicenseAcq_ProcessResponse_Netflix(m_poAppContext,
                                                  DRM_PROCESS_LIC_RESPONSE_NO_FLAGS,
