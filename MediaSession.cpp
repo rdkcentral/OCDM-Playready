@@ -23,12 +23,11 @@
 #include <string.h>
 #include <vector>
 #include <sys/utsname.h>
-#include <WPEFramework/core/core.h>
+#include <core/core.h>
 
-extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
-
-using WPEFramework::Core::SafeSyncType;
-using WPEFramework::Core::CriticalSection;
+using namespace WPEFramework;
+using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
+extern Core::CriticalSection drmAppContextMutex_;
 
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
@@ -492,7 +491,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t*, // keyId
     bool initWithLast15)
 {
-    SafeSyncType<CriticalSection> systemLock(drmAppContextMutex_);
+    SafeCriticalSection systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
         return CDMi_SUCCESS;
