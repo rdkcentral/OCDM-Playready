@@ -448,8 +448,10 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
   m_eKeyState = KEY_READY;
 
   if (m_eKeyState == KEY_READY) {
-      if (m_piCallback)
+      if (m_piCallback) {
         m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
+        m_piCallback->OnKeyStatusesUpdated();
+      }
   }
   return;
 
@@ -462,8 +464,10 @@ ErrorExit:
     m_eKeyState = KEY_ERROR;
 
     // The upper layer is blocked waiting for an update, let's wake it.
-    if (m_piCallback)
+    if (m_piCallback) {
       m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
+      m_piCallback->OnKeyStatusesUpdated();
+    }
   }
   return;
 }
