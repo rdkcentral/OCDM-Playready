@@ -16,7 +16,8 @@
  */
 
 #include <plugins/plugins.h>
-#include <cdmi.h>
+//#include <cdmi.h>
+#include <interfaces/IDRM.h>
 #include <memory>
 #include <vector>
 #include <iostream>
@@ -84,7 +85,7 @@ public:
         IMediaKeySession **f_ppiMediaKeySession) {
 
         bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
-        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, !isNetflixPlayready);
+        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, m_poAppContext.get(), !isNetflixPlayready);
  
         return CDMi_SUCCESS; 
     }
@@ -130,20 +131,6 @@ public:
 
        return 0;
 
-    }
-
-    CDMi_RESULT CreateMediaKeySessionExt(
-            const std::string& keySystem,
-            const uint8_t drmHeader[],
-            uint32_t drmHeaderLength,
-            IMediaKeySessionExt** session) override
-    {
-        bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
-        *session = new CDMi::MediaKeySession(drmHeader, drmHeaderLength, m_poAppContext.get(), !isNetflixPlayready);
-
-        fprintf(stderr, "%s:%d: PR created a session\n", __FILE__, __LINE__);
-
-        return CDMi_SUCCESS;
     }
 
     CDMi_RESULT DestroyMediaKeySessionExt(IMediaKeySession *f_piMediaKeySession)

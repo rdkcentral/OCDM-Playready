@@ -39,7 +39,8 @@
 
 #include <string.h>
 #include <memory>
-#include <cdmi.h>
+//#include <cdmi.h>
+#include <interfaces/IDRM.h>
 
 namespace CDMi {
 
@@ -84,12 +85,7 @@ private:
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(
-            const uint8_t drmHeader[],
-            uint32_t drmHeaderLength,
-            DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration = false);
-
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, bool initiateChallengeGeneration = false);
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration = false);
     ~MediaKeySession();
 
     bool playreadyGenerateKeyRequest();

@@ -85,25 +85,6 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
     return DRM_SUCCESS;
 }
 
-
-MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration /* = false */)
-   : m_poAppContext(poAppContext)
-   , m_pbOpaqueBuffer(nullptr)
-   , m_pbRevocationBuffer(nullptr)
-   , m_pbChallenge(nullptr)
-   , m_pchSilentURL(nullptr)
-   , m_decryptInited(false)
-   , m_oDecryptContext(nullptr)
-   , mInitiateChallengeGeneration(initiateChallengeGeneration)
-{
-    mLicenseResponse = std::unique_ptr<LicenseResponse>(new LicenseResponse());
-    mSecureStopId.clear();
-
-    // TODO: can we do this nicer?
-    mDrmHeader.resize(drmHeaderLength);
-    memcpy(&mDrmHeader[0], drmHeader, drmHeaderLength);
-}
-
 uint32_t MediaKeySession::GetSessionIdExt() const
 {
     return mSessionId;
