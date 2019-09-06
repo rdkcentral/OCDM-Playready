@@ -286,6 +286,7 @@ public:
         return CDMi_SUCCESS;
     }
 
+    // TODO: can we move this to the constructor?
     CDMi_RESULT CreateSystemExt() override
     {
         // Clear DRM app context.
@@ -317,6 +318,7 @@ public:
         return CDMi_SUCCESS;
     }
 
+    // TODO: can we move this to the constructor?
     CDMi_RESULT InitSystemExt() override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
