@@ -111,10 +111,9 @@ public:
     ////////////////////
     // Ext
     ////////////////////
-    time_t GetDrmSystemTime() const override
+    uint64_t GetDrmSystemTime() const override
     {
        fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
-       //return 46;
 
        SafeCriticalSection lock(drmAppContextMutex_);
 
@@ -123,10 +122,9 @@ public:
        if (err != DRM_SUCCESS) {
            fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
            // return invalid time
-           return (time_t) -1;
+           return static_cast<uint64_t>(-1);
        } else {
-           //*time = (time_t)utctime64;
-           return (time_t)utctime64;
+           return static_cast<uint64_t>(utctime64);
        }
 
        return 0;
