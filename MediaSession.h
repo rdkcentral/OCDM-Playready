@@ -135,8 +135,8 @@ public:
     virtual CDMi_RESULT GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL) override;
     virtual CDMi_RESULT CancelChallengeDataExt() override;
     virtual CDMi_RESULT StoreLicenseData(const uint8_t licenseData[], uint32_t licenseDataSize, unsigned char * secureStopId) override;
-    virtual CDMi_RESULT InitDecryptContextByKid() override;
     virtual CDMi_RESULT CleanDecryptContext() override;
+    virtual CDMi_RESULT SelectKeyId(const uint8_t keyLength, const uint8_t keyId[]) override;
 
 private:
 

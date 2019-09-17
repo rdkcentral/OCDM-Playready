@@ -85,7 +85,12 @@ public:
         IMediaKeySession **f_ppiMediaKeySession) {
 
         bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
-        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, m_poAppContext.get(), !isNetflixPlayready);
+        if (isNetflixPlayready) {
+           // TODO: why is the order different when dealing with netflix?
+           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbCDMData, f_cbCDMData, f_pbInitData, f_cbInitData, m_poAppContext.get(), !isNetflixPlayready);
+        } else {
+           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, m_poAppContext.get(), !isNetflixPlayready);
+        }
  
         return CDMi_SUCCESS; 
     }
@@ -156,6 +161,8 @@ public:
     uint32_t GetLdlSessionLimit() const override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+
+        ASSERT(m_poAppContext.get() != nullptr);
 
         uint32_t ldlLimit = 0;
         DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext.get(), &ldlLimit);
@@ -286,124 +293,6 @@ public:
         return CDMi_SUCCESS;
     }
 
-    // TODO: can we move this to the constructor?
-    CDMi_RESULT CreateSystemExt() override
-    {
-        // Clear DRM app context.
-        if (m_poAppContext.get() != nullptr) {
-            m_poAppContext.reset();
-        }
-
-        std::string rdir(m_readDir);
-
-        // Create wchar strings from the arguments.
-        drmdir_ = createDrmWchar(rdir);
-
-        // Initialize Ocdm directory.
-        g_dstrDrmPath.pwszString = drmdir_;
-        g_dstrDrmPath.cchString = rdir.length();
-
-        // Store store location
-        std::string store(m_storeLocation);
-
-        drmStore_.pwszString = createDrmWchar(store);
-        drmStore_.cchString = store.length();
-
-        // Init opaque buffer.
-        appContextOpaqueBuffer_ = new DRM_BYTE[MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE];
-
-        // Init revocation buffer.
-        pbRevocationBuffer_ = new DRM_BYTE[REVOCATION_BUFFER_SIZE];
-
-        return CDMi_SUCCESS;
-    }
-
-    // TODO: can we move this to the constructor?
-    CDMi_RESULT InitSystemExt() override
-    {
-        SafeCriticalSection lock(drmAppContextMutex_);
-
-        DRM_RESULT err;
-
-        // DRM Platform Initialization
-        err = Drm_Platform_Initialize();
-        if(DRM_FAILED(err))
-        {
-            if (m_poAppContext.get() != nullptr) {
-               m_poAppContext.reset();
-            }
-            fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
-            return CDMi_S_FALSE;
-        }
-        
-        if (m_poAppContext.get() != nullptr) {
-           m_poAppContext.reset();
-        }
-
-        // TODO: move app context to OpenCDMAccessor
-        m_poAppContext.reset(new DRM_APP_CONTEXT);
-
-        memset(m_poAppContext.get(), 0, sizeof(DRM_APP_CONTEXT));
-        err  = Drm_Initialize(m_poAppContext.get(), nullptr,
-                              appContextOpaqueBuffer_,
-                              MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
-                              &drmStore_);
-        if(DRM_FAILED(err)) {
-            m_poAppContext.reset();
-            fprintf(stderr, "Error in Drm_Initialize: 0x%08lX\n", err);
-            return CDMi_S_FALSE;
-        }
-
-        err = Drm_Revocation_SetBuffer(m_poAppContext.get(), pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
-        if(DRM_FAILED(err))
-        {
-            m_poAppContext.reset();
-            fprintf(stderr, "Error in Drm_Revocation_SetBuffer: 0x%08lX\n", err);
-            return CDMi_S_FALSE;
-        }
-
-        //return ERROR_NONE;
-        return CDMi_SUCCESS;
-    }
-
-    CDMi_RESULT TeardownSystemExt() override
-    {
-        SafeCriticalSection lock(drmAppContextMutex_);
-
-        if(!m_poAppContext.get()) {
-            fprintf(stderr, "Error, no app context yet\n");
-            return CDMi_S_FALSE;
-        }
-
-        DRM_RESULT err;
-        err = Drm_Reader_Commit(m_poAppContext.get(), nullptr, nullptr);
-        if(DRM_FAILED(err)) {
-            fprintf(stderr, "Warning, Drm_Reader_Commit returned 0x%08lX\n", err);
-        }
-
-        err = Drm_StoreMgmt_CleanupStore(m_poAppContext.get(),
-                                         DRM_STORE_CLEANUP_DELETE_EXPIRED_LICENSES |
-                                         DRM_STORE_CLEANUP_DELETE_REMOVAL_DATE_LICENSES,
-                                         nullptr, 0, nullptr);
-        if(DRM_FAILED(err))
-        {
-            fprintf(stderr, "Warning, Drm_StoreMgmt_CleanupStore returned 0x%08lX\n", err);
-        }
-        // Uninitialize drm context
-        Drm_Uninitialize(m_poAppContext.get());
-        m_poAppContext.reset();
-
-        // Unitialize platform
-        err = Drm_Platform_Uninitialize();
-        if(DRM_FAILED(err))
-        {
-            fprintf(stderr, "Failed to call Drm_Platform_Unitialize\n");
-            return CDMi_S_FALSE;
-        }
-
-        return CDMi_SUCCESS;
-    }
-
     CDMi_RESULT DeleteKeyStore() override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
@@ -476,7 +365,7 @@ public:
         return CDMi_SUCCESS;
     }
 
-    void OnSystemConfigurationAvailable(const PluginHost::IShell * shell, const std::string& configline)
+    void Initialize(const WPEFramework::PluginHost::IShell * shell, const std::string& /* configline */)
     {
         string persistentPath = shell->PersistentPath() + string("/playready");
         string statePath = persistentPath + "/state"; // To store rollback clock state etc
@@ -487,6 +376,82 @@ public:
         stateDir.Create();
 
         Core::SystemInfo::SetEnvironment(_T("HOME"), statePath);
+
+        // TODO: this is just a move from CreateSystemExt, have another look at this
+        // Clear DRM app context.
+        if (m_poAppContext.get() != nullptr) {
+            m_poAppContext.reset();
+        }
+
+        std::string rdir(m_readDir);
+
+        // Create wchar strings from the arguments.
+        drmdir_ = createDrmWchar(rdir);
+
+        // Initialize Ocdm directory.
+        g_dstrDrmPath.pwszString = drmdir_;
+        g_dstrDrmPath.cchString = rdir.length();
+
+        // Store store location
+        std::string store(m_storeLocation);
+
+        drmStore_.pwszString = createDrmWchar(store);
+        drmStore_.cchString = store.length();
+
+        // Init opaque buffer.
+        appContextOpaqueBuffer_ = new DRM_BYTE[MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE];
+
+        // Init revocation buffer.
+        pbRevocationBuffer_ = new DRM_BYTE[REVOCATION_BUFFER_SIZE];
+
+        //return CDMi_SUCCESS;
+
+        // TODO: this is just a move from InitSystemExt
+        SafeCriticalSection lock(drmAppContextMutex_);
+
+        DRM_RESULT err;
+
+        // DRM Platform Initialization
+        err = Drm_Platform_Initialize();
+        if(DRM_FAILED(err))
+        {
+            if (m_poAppContext.get() != nullptr) {
+               m_poAppContext.reset();
+            }
+            fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
+            //return CDMi_S_FALSE;
+            return;
+        }
+
+        if (m_poAppContext.get() != nullptr) {
+           m_poAppContext.reset();
+        }
+
+        // TODO: move app context to OpenCDMAccessor
+        m_poAppContext.reset(new DRM_APP_CONTEXT);
+
+        memset(m_poAppContext.get(), 0, sizeof(DRM_APP_CONTEXT));
+        err  = Drm_Initialize(m_poAppContext.get(), nullptr,
+                              appContextOpaqueBuffer_,
+                              MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
+                              &drmStore_);
+        if(DRM_FAILED(err)) {
+            m_poAppContext.reset();
+            fprintf(stderr, "Error in Drm_Initialize: 0x%08lX\n", err);
+            //return CDMi_S_FALSE;
+            return;
+        }
+
+        err = Drm_Revocation_SetBuffer(m_poAppContext.get(), pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
+        if(DRM_FAILED(err))
+        {
+            m_poAppContext.reset();
+            fprintf(stderr, "Error in Drm_Revocation_SetBuffer: 0x%08lX\n", err);
+            //return CDMi_S_FALSE;
+            return;
+        }
+
+        //return CDMi_SUCCESS;
     }
 
 private:
