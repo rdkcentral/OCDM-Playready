@@ -367,7 +367,7 @@ public:
 
     void Initialize(const WPEFramework::PluginHost::IShell * shell, const std::string& /* configline */)
     {
-        string persistentPath = shell->PersistentPath() + string("/playready");
+        string persistentPath = shell->PersistentPath();
         string statePath = persistentPath + "/state"; // To store rollback clock state etc
         m_readDir = persistentPath + "/playready";
         m_storeLocation = persistentPath + "/playready/storage/drmstore";
