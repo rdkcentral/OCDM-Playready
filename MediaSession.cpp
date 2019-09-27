@@ -51,6 +51,17 @@ using namespace std;
 
 namespace CDMi {
 
+namespace {
+
+void Swap(uint8_t& lhs, uint8_t& rhs)
+{
+    uint8_t tmp =lhs;
+    lhs = rhs;
+    rhs = tmp;
+}
+
+}
+
 // The default location of CDM DRM store.
 // /tmp/drmstore.dat
 
@@ -185,8 +196,8 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
   return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, bool initiateChallengeGeneration /* = false */)
-    : m_poAppContext(nullptr)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration /* = false */)
+    : m_poAppContext(poAppContext)
     , m_pbOpaqueBuffer(nullptr) 
     , m_cbOpaqueBuffer(0)
     , m_pbRevocationBuffer(nullptr)
@@ -200,69 +211,79 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , mInitiateChallengeGeneration(initiateChallengeGeneration)
     , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
 {
-  m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
-    
-  DRM_RESULT dr = DRM_SUCCESS;
-  DRM_ID oSessionID;
+   DRM_RESULT dr = DRM_SUCCESS;
 
-  DRM_DWORD cchEncodedSessionID = SIZEOF(m_rgchSessionID);
+   if (!initiateChallengeGeneration) {
+      mLicenseResponse = std::unique_ptr<LicenseResponse>(new LicenseResponse());
+      mSecureStopId.clear();
 
-  // FIXME: Change the interface of this method? Not sure why the win32 bondage is still so popular.
-  std::string initData(reinterpret_cast<const char*>(f_pbInitData), f_cbInitData);
-  std::string playreadyInitData;
+      // TODO: can we do this nicer?
+      mDrmHeader.resize(f_cbCDMData);
+      memcpy(&mDrmHeader[0], f_pbCDMData, f_cbCDMData);
+   } else {
+      m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
+         
+      DRM_ID oSessionID;
 
-  printf("Constructing PlayReady Session [%p]\n", this);
+      DRM_DWORD cchEncodedSessionID = SIZEOF(m_rgchSessionID);
 
-  ChkMem(m_pbOpaqueBuffer = (DRM_BYTE *)Oem_MemAlloc(MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE));
-  m_cbOpaqueBuffer = MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE;
+      // FIXME: Change the interface of this method? Not sure why the win32 bondage is still so popular.
+      std::string initData(reinterpret_cast<const char*>(f_pbInitData), f_cbInitData);
+      std::string playreadyInitData;
 
-  ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(SIZEOF(DRM_APP_CONTEXT)));
+      printf("Constructing PlayReady Session [%p]\n", this);
 
-  // Initialize DRM app context.
-  ChkDR(Drm_Initialize(m_poAppContext,
-                       nullptr,
-                       m_pbOpaqueBuffer,
-                       m_cbOpaqueBuffer,
-                       &g_dstrCDMDrmStoreName));
+      ChkMem(m_pbOpaqueBuffer = (DRM_BYTE *)Oem_MemAlloc(MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE));
+      m_cbOpaqueBuffer = MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE;
 
-  if (DRM_REVOCATION_IsRevocationSupported()) {
-    ChkMem(m_pbRevocationBuffer = (DRM_BYTE *)Oem_MemAlloc(REVOCATION_BUFFER_SIZE));
+      ChkMem(m_poAppContext = (DRM_APP_CONTEXT *)Oem_MemAlloc(SIZEOF(DRM_APP_CONTEXT)));
 
-    ChkDR(Drm_Revocation_SetBuffer(m_poAppContext,
-                                   m_pbRevocationBuffer,
-                                   REVOCATION_BUFFER_SIZE));
-  }
+      // Initialize DRM app context.
+      ChkDR(Drm_Initialize(m_poAppContext,
+                           nullptr,
+                           m_pbOpaqueBuffer,
+                           m_cbOpaqueBuffer,
+                           &g_dstrCDMDrmStoreName));
+
+      if (DRM_REVOCATION_IsRevocationSupported()) {
+         ChkMem(m_pbRevocationBuffer = (DRM_BYTE *)Oem_MemAlloc(REVOCATION_BUFFER_SIZE));
+
+         ChkDR(Drm_Revocation_SetBuffer(m_poAppContext,
+                                       m_pbRevocationBuffer,
+                                       REVOCATION_BUFFER_SIZE));
+      }
 
 #ifdef PR_3_3      
-  //temporary hack to allow time based licenses
-  ( DRM_REINTERPRET_CAST( DRM_APP_CONTEXT_INTERNAL, m_poAppContext ) )->fClockSet = TRUE;    
+      //temporary hack to allow time based licenses
+      ( DRM_REINTERPRET_CAST( DRM_APP_CONTEXT_INTERNAL, m_poAppContext ) )->fClockSet = TRUE;    
 #endif
-      
-  // Generate a random media session ID.
-  ChkDR(Oem_Random_GetBytes(nullptr, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
-  ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
+            
+      // Generate a random media session ID.
+      ChkDR(Oem_Random_GetBytes(nullptr, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
+      ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
 
-  // Store the generated media session ID in base64 encoded form.
-  ChkDR(DRM_B64_EncodeA((DRM_BYTE *)&oSessionID,
-                        SIZEOF(oSessionID),
-                        m_rgchSessionID,
-                        &cchEncodedSessionID,
-                        0));
+      // Store the generated media session ID in base64 encoded form.
+      ChkDR(DRM_B64_EncodeA((DRM_BYTE *)&oSessionID,
+                              SIZEOF(oSessionID),
+                              m_rgchSessionID,
+                              &cchEncodedSessionID,
+                              0));
 
-  // The current state MUST be KEY_INIT otherwise error out.
-  ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
+      // The current state MUST be KEY_INIT otherwise error out.
+      ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
 
-  if (!parsePlayreadyInitializationData(initData, &playreadyInitData)) {
-      playreadyInitData = initData;
-  }
-  ChkDR(Drm_Content_SetProperty(m_poAppContext,
-                                DRM_CSP_AUTODETECT_HEADER,
-                                reinterpret_cast<const DRM_BYTE*>(playreadyInitData.data()),
-                                playreadyInitData.size()));
+      if (!parsePlayreadyInitializationData(initData, &playreadyInitData)) {
+            playreadyInitData = initData;
+      }
+      ChkDR(Drm_Content_SetProperty(m_poAppContext,
+                                    DRM_CSP_AUTODETECT_HEADER,
+                                    reinterpret_cast<const DRM_BYTE*>(playreadyInitData.data()),
+                                    playreadyInitData.size()));
 
-  // The current state MUST be KEY_INIT otherwise error out.
-  ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
-  return; 
+      // The current state MUST be KEY_INIT otherwise error out.
+      ChkBOOL(m_eKeyState == KEY_INIT, DRM_E_INVALIDARG);
+      return; 
+   }
 
 ErrorExit:
   if (DRM_FAILED(dr)) {
@@ -448,11 +469,21 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
   m_eKeyState = KEY_READY;
 
   if (m_eKeyState == KEY_READY) {
-      if (m_piCallback) {
-        m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
-        m_piCallback->OnKeyStatusesUpdated();
+    if (m_piCallback) {
+      for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
+        if (DRM_SUCCEEDED(oLicenseResponse.m_rgoAcks[i].m_dwResult)) {
+            // Make MS endianness to Cenc endianness.
+            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[0], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[3]);
+            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[1], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[2]);
+            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[4], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[5]);
+            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[6], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[7]);
+            m_piCallback->OnKeyStatusUpdate("KeyUsable", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
+        }
       }
+      m_piCallback->OnKeyStatusesUpdated();
+    }
   }
+
   return;
 
 ErrorExit:
@@ -465,7 +496,14 @@ ErrorExit:
 
     // The upper layer is blocked waiting for an update, let's wake it.
     if (m_piCallback) {
-      m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
+      for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
+        // Make MS endianness to Cenc endianness.
+        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[0], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[3]);
+        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[1], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[2]);
+        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[4], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[5]);
+        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[6], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[7]);
+        m_piCallback->OnKeyStatusUpdate("KeyError", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
+      }
       m_piCallback->OnKeyStatusesUpdated();
     }
   }

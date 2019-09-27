@@ -85,25 +85,6 @@ static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, D
     return DRM_SUCCESS;
 }
 
-
-MediaKeySession::MediaKeySession(const uint8_t drmHeader[], uint32_t drmHeaderLength, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration /* = false */)
-   : m_poAppContext(poAppContext)
-   , m_pbOpaqueBuffer(nullptr)
-   , m_pbRevocationBuffer(nullptr)
-   , m_pbChallenge(nullptr)
-   , m_pchSilentURL(nullptr)
-   , m_decryptInited(false)
-   , m_oDecryptContext(nullptr)
-   , mInitiateChallengeGeneration(initiateChallengeGeneration)
-{
-    mLicenseResponse = std::unique_ptr<LicenseResponse>(new LicenseResponse());
-    mSecureStopId.clear();
-
-    // TODO: can we do this nicer?
-    mDrmHeader.resize(drmHeaderLength);
-    memcpy(&mDrmHeader[0], drmHeader, drmHeaderLength);
-}
-
 uint32_t MediaKeySession::GetSessionIdExt() const
 {
     return mSessionId;
@@ -172,68 +153,6 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
 
     // All done.
     return CDMi_SUCCESS;
-}
-
-CDMi_RESULT MediaKeySession::InitDecryptContextByKid()
-{
-    // open scope for DRM_APP_CONTEXT mutex
-    SafeCriticalSection systemLock(drmAppContextMutex_);
-    DRM_RESULT err;
-    // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
-    // simulataneous decryption support
-    err = Drm_Reinitialize(m_poAppContext);
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
-    err = Drm_Content_SetProperty(m_poAppContext,
-                                  DRM_CSP_AUTODETECT_HEADER,
-                                  &mDrmHeader[0],
-                                  mDrmHeader.size());
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
-    if (m_decryptInited) {
-        return CDMi_SUCCESS;
-    }
-    CDMi_RESULT result = CDMi_SUCCESS;
-    m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
-    //Create a decrypt context and bind it with the drm context.
-    memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
-    if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
-        err = Drm_Reader_Bind_Netflix(m_poAppContext,
-                                      RIGHTS,
-                                      sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                      &opencdm_output_levels_callback, m_piCallback,
-                                      &mSecureStopId[0],
-                                      m_oDecryptContext);
-    
-
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
-            result = CDMi_S_FALSE;
-        } else {
-
-            err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, m_piCallback);
-            if (DRM_FAILED(err))
-            {
-                fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
-                result = CDMi_S_FALSE;
-            }
-        }
-        if (result == CDMi_SUCCESS) {
-            m_fCommit = TRUE;
-            m_decryptInited = true;
-        }
-    } else {
-        fprintf(stderr, "Error: secure stop ID is not valid\n");
-        result = CDMi_S_FALSE;
-    }
-    return result;
 }
 
 CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL)
@@ -320,6 +239,67 @@ CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
         return CDMi_S_FALSE;
     }
     return CDMi_SUCCESS;
+}
+
+CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const uint8_t[] /* keyId */)
+{
+    // open scope for DRM_APP_CONTEXT mutex
+    SafeCriticalSection systemLock(drmAppContextMutex_);
+    DRM_RESULT err;
+    // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
+    // simulataneous decryption support
+    err = Drm_Reinitialize(m_poAppContext);
+    if (DRM_FAILED(err))
+    {
+        fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
+        return CDMi_S_FALSE;
+    }
+    err = Drm_Content_SetProperty(m_poAppContext,
+                                  DRM_CSP_AUTODETECT_HEADER,
+                                  &mDrmHeader[0],
+                                  mDrmHeader.size());
+    if (DRM_FAILED(err))
+    {
+        fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
+        return CDMi_S_FALSE;
+    }
+    if (m_decryptInited) {
+        return CDMi_SUCCESS;
+    }
+    CDMi_RESULT result = CDMi_SUCCESS;
+    m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
+    //Create a decrypt context and bind it with the drm context.
+    memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
+    if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
+        err = Drm_Reader_Bind_Netflix(m_poAppContext,
+                                      RIGHTS,
+                                      sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                                      &opencdm_output_levels_callback, m_piCallback,
+                                      &mSecureStopId[0],
+                                      m_oDecryptContext);
+
+        if (DRM_FAILED(err))
+        {
+            fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
+            result = CDMi_S_FALSE;
+        } else {
+
+            err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, m_piCallback);
+            if (DRM_FAILED(err))
+            {
+                fprintf(stderr, "Error: Drm_Reader_Commit returned 0x%lX\n", (long)err);
+                result = CDMi_S_FALSE;
+            }
+        }
+        if (result == CDMi_SUCCESS) {
+            m_fCommit = TRUE;
+            m_decryptInited = true;
+        }
+    } else {
+        fprintf(stderr, "Error: secure stop ID is not valid\n");
+        result = CDMi_S_FALSE;
+    }
+    return result;
 }
 
 CDMi_RESULT MediaKeySession::CleanDecryptContext()
