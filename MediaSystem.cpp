@@ -72,6 +72,8 @@ public:
     }
 
     ~PlayReady(void) {
+        if (m_poAppContext)
+            Drm_Uninitialize(m_poAppContext.get());
     }
 
     CDMi_RESULT CreateMediaKeySession(
@@ -103,13 +105,11 @@ public:
     }
 
     CDMi_RESULT DestroyMediaKeySession(IMediaKeySession *f_piMediaKeySession) {
+        SafeCriticalSection systemLock(drmAppContextMutex_);
         MediaKeySession * mediaKeySession = dynamic_cast<MediaKeySession *>(f_piMediaKeySession);
         ASSERT((mediaKeySession != nullptr) && "Expected a locally allocated MediaKeySession");
 
-        // TODO: is this call still needed? Can't we move it to the destructor?
-        mediaKeySession->UninitializeContext();
         delete f_piMediaKeySession;
-
         return CDMi_SUCCESS; 
     }
 
@@ -134,14 +134,6 @@ public:
 
        return 0;
 
-    }
-
-    CDMi_RESULT DestroyMediaKeySessionExt(IMediaKeySession *f_piMediaKeySession)
-    {
-        SafeCriticalSection systemLock(drmAppContextMutex_);
-        delete f_piMediaKeySession;
-
-        return CDMi_SUCCESS;
     }
 
     std::string GetVersionExt() const override
@@ -377,11 +369,7 @@ public:
 
         Core::SystemInfo::SetEnvironment(_T("HOME"), statePath);
 
-        // TODO: this is just a move from CreateSystemExt, have another look at this
-        // Clear DRM app context.
-        if (m_poAppContext.get() != nullptr) {
-            m_poAppContext.reset();
-        }
+        ASSERT(m_poAppContext.get() == nullptr);
 
         std::string rdir(m_readDir);
 
@@ -415,37 +403,29 @@ public:
         err = Drm_Platform_Initialize();
         if(DRM_FAILED(err))
         {
-            if (m_poAppContext.get() != nullptr) {
-               m_poAppContext.reset();
-            }
             fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
             //return CDMi_S_FALSE;
             return;
         }
 
-        if (m_poAppContext.get() != nullptr) {
-           m_poAppContext.reset();
-        }
+        std::unique_ptr<DRM_APP_CONTEXT> appCtx;
+        appCtx.reset(new DRM_APP_CONTEXT);
 
-        // TODO: move app context to OpenCDMAccessor
-        m_poAppContext.reset(new DRM_APP_CONTEXT);
-
-        memset(m_poAppContext.get(), 0, sizeof(DRM_APP_CONTEXT));
-        err  = Drm_Initialize(m_poAppContext.get(), nullptr,
+        memset(appCtx.get(), 0, sizeof(DRM_APP_CONTEXT));
+        err  = Drm_Initialize(appCtx.get(), nullptr,
                               appContextOpaqueBuffer_,
                               MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
                               &drmStore_);
         if(DRM_FAILED(err)) {
-            m_poAppContext.reset();
             fprintf(stderr, "Error in Drm_Initialize: 0x%08lX\n", err);
             //return CDMi_S_FALSE;
             return;
         }
 
+        m_poAppContext.swap(appCtx);
         err = Drm_Revocation_SetBuffer(m_poAppContext.get(), pbRevocationBuffer_, REVOCATION_BUFFER_SIZE);
         if(DRM_FAILED(err))
         {
-            m_poAppContext.reset();
             fprintf(stderr, "Error in Drm_Revocation_SetBuffer: 0x%08lX\n", err);
             //return CDMi_S_FALSE;
             return;
@@ -460,7 +440,7 @@ private:
 
     DRM_BYTE *appContextOpaqueBuffer_ = nullptr;
     DRM_BYTE *pbRevocationBuffer_ = nullptr;
-    std::shared_ptr<DRM_APP_CONTEXT> m_poAppContext;
+    std::unique_ptr<DRM_APP_CONTEXT> m_poAppContext;
 
     string m_readDir;
     string m_storeLocation;
