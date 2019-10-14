@@ -51,17 +51,6 @@ using namespace std;
 
 namespace CDMi {
 
-namespace {
-
-void Swap(uint8_t& lhs, uint8_t& rhs)
-{
-    uint8_t tmp =lhs;
-    lhs = rhs;
-    rhs = tmp;
-}
-
-}
-
 // The default location of CDM DRM store.
 // /tmp/drmstore.dat
 
@@ -456,11 +445,6 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
     if (m_piCallback) {
       for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
         if (DRM_SUCCEEDED(oLicenseResponse.m_rgoAcks[i].m_dwResult)) {
-            // Make MS endianness to Cenc endianness.
-            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[0], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[3]);
-            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[1], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[2]);
-            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[4], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[5]);
-            Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[6], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[7]);
             m_piCallback->OnKeyStatusUpdate("KeyUsable", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
         }
       }
@@ -481,11 +465,6 @@ ErrorExit:
     // The upper layer is blocked waiting for an update, let's wake it.
     if (m_piCallback) {
       for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
-        // Make MS endianness to Cenc endianness.
-        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[0], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[3]);
-        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[1], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[2]);
-        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[4], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[5]);
-        Swap(oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[6], oLicenseResponse.m_rgoAcks[i].m_oKID.rgb[7]);
         m_piCallback->OnKeyStatusUpdate("KeyError", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
       }
       m_piCallback->OnKeyStatusesUpdated();
