@@ -127,6 +127,7 @@ public:
 
        SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
        DRM_UINT64 utctime64;
        DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext.get(), &utctime64);
        if (err != DRM_SUCCESS) {
@@ -136,6 +137,7 @@ public:
        } else {
            return static_cast<uint64_t>(utctime64);
        }
+#endif
 
        return 0;
 
@@ -162,11 +164,13 @@ public:
         ASSERT(m_poAppContext.get() != nullptr);
 
         uint32_t ldlLimit = 0;
+#ifdef NETFLIX
         DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext.get(), &ldlLimit);
         if (err != DRM_SUCCESS) {
             fprintf(stderr, "Error: Drm_LicenseAcq_GetLdlSessionsLimit_Netflix returned 0x%lX\n", (long)err);
             return 0;
         }
+#endif
 
         return ldlLimit;
     }
@@ -174,13 +178,19 @@ public:
     bool IsSecureStopEnabled() override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+#ifdef NETFLIX
         return static_cast<bool>(Drm_SupportSecureStop());
+#else
+        return false;
+#endif
     }
 
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+#ifdef NETFLIX
         Drm_TurnSecureStop(static_cast<int>(enable));
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -189,15 +199,17 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
         // if secure stop is not supported, return
+        DRM_WORD numDeleted = 0;
+#ifdef NETFLIX
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
             return 0;
 
-        DRM_WORD numDeleted = 0;
         DRM_RESULT err = Drm_ResetSecureStops(m_poAppContext.get(), &numDeleted);
         if (err != DRM_SUCCESS) {
             fprintf(stderr, "Drm_ResetSecureStops returned 0x%lx\n", (long)err);
         }
+#endif
         return numDeleted;
     }
 
@@ -205,6 +217,7 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         // if secure stop is not supported, return NotAllowed
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
@@ -220,6 +233,7 @@ public:
         for (int i = 0; i < count; ++i) {
             memcpy(&ids[i * TEE_SESSION_ID_LEN], sessionIds[i], TEE_SESSION_ID_LEN);
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -232,6 +246,7 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
@@ -253,6 +268,7 @@ public:
             fprintf(stderr, "Drm_GetSecureStop(0) returned 0x%lx\n", (long)err);
             return CDMi_S_FALSE;
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -265,6 +281,7 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         // if secure stop is not supported, return
         DRM_BOOL supported = Drm_SupportSecureStop();
         if (supported == FALSE)
@@ -286,6 +303,7 @@ public:
         {
             fprintf(stderr, "Drm_CommitSecureStop returned 0x%lx\n", (long)err);
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -294,12 +312,14 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         DRM_RESULT err = Drm_DeleteKeyStore();
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_DeleteKeyStore returned 0x%lX\n", (long)err);
             return CDMi_S_FALSE;
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -308,12 +328,14 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
         if (err != DRM_SUCCESS)
         {
             fprintf(stderr, "Error: Drm_DeleteSecureStore returned 0x%lX\n", (long)err);
             return CDMi_S_FALSE;
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -324,6 +346,7 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         if (keyStoreHashLength < 256)
         {
             fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
@@ -336,6 +359,7 @@ public:
             fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
             return CDMi_S_FALSE;
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -346,6 +370,7 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
+#ifdef NETFLIX
         if (secureStoreHashLength < 256)
         {
             fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
@@ -358,6 +383,7 @@ public:
             fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
             return CDMi_S_FALSE;
         }
+#endif
 
         return CDMi_SUCCESS;
     }
@@ -405,7 +431,11 @@ public:
         DRM_RESULT err;
 
         // DRM Platform Initialization
+#ifdef PR_3_3
+        err = Drm_Platform_Initialize(nullptr);
+#else
         err = Drm_Platform_Initialize();
+#endif
         if(DRM_FAILED(err))
         {
             fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);

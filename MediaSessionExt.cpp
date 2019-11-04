@@ -113,6 +113,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     // open scope for DRM_APP_CONTEXT mutex
     SafeCriticalSection systemLock(drmAppContextMutex_);
 
+#ifdef NETFLIX
     // Make sure PlayReady still expects a 16 byte array.
     ASSERT(TEE_SESSION_ID_LEN == 16);
 
@@ -161,6 +162,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     mSecureStopId.clear();
     mSecureStopId.resize(TEE_SESSION_ID_LEN);
     mSecureStopId.assign(secureStopId, secureStopId + TEE_SESSION_ID_LEN);
+#endif
 
     // All done.
     return CDMi_SUCCESS;
@@ -172,6 +174,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 
     SafeCriticalSection systemLock(drmAppContextMutex_);
 
+#ifdef NETFLIX
     // sanity check for drm header
     if (mDrmHeader.size() == 0)
     {
@@ -237,18 +240,20 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
         fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
         return CDMi_OUT_OF_MEMORY ;
     }
-
+#endif
     return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
 {
     SafeCriticalSection systemLock(drmAppContextMutex_);
+#ifdef NETFLIX
     DRM_RESULT err = Drm_LicenseAcq_CancelChallenge_Netflix(m_poAppContext, &mNounce[0]);
     if (DRM_FAILED(err)) {
         fprintf(stderr, "Error Drm_LicenseAcq_CancelChallenge_Netflix: 0x%08lx\n", static_cast<unsigned long>(err));
         return CDMi_S_FALSE;
     }
+#endif
     return CDMi_SUCCESS;
 }
 
@@ -257,6 +262,8 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     // open scope for DRM_APP_CONTEXT mutex
     SafeCriticalSection systemLock(drmAppContextMutex_);
     DRM_RESULT err;
+    CDMi_RESULT result = CDMi_SUCCESS;
+#ifdef NETFLIX
     // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
     // simulataneous decryption support
     err = Drm_Reinitialize(m_poAppContext);
@@ -277,7 +284,6 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     if (m_decryptInited) {
         return CDMi_SUCCESS;
     }
-    CDMi_RESULT result = CDMi_SUCCESS;
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
     //Create a decrypt context and bind it with the drm context.
     memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
@@ -310,6 +316,7 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
         fprintf(stderr, "Error: secure stop ID is not valid\n");
         result = CDMi_S_FALSE;
     }
+#endif
     return result;
 }
 
@@ -321,6 +328,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
 
     CDMi_RESULT result = CDMi_SUCCESS;
 
+#ifdef NETFLIX
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
     ASSERT(m_poAppContext != nullptr);
     if (m_oDecryptContext) {
@@ -407,6 +415,8 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
     m_oDecryptContext = nullptr;
     m_fCommit = FALSE;
     m_decryptInited = false;
+#endif
     return CDMi_SUCCESS;
 }
+
 }
