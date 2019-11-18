@@ -196,7 +196,7 @@ public:
         return numDeleted;
     }
 
-    CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint8_t, uint32_t & count)
+    CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint16_t, uint32_t & count)
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
