@@ -40,8 +40,13 @@ Core::CriticalSection drmAppContextMutex_;
 static DRM_WCHAR* createDrmWchar(std::string const& s) {
     DRM_WCHAR* w = new DRM_WCHAR[s.length() + 1];
     for (size_t i = 0; i < s.length(); ++i)
+#ifdef PR_3_3
+        w[i] = DRM_ONE_WCHAR(s[i], '\0');
+    w[s.length()] = DRM_ONE_WCHAR('\0', '\0');
+#else
         w[i] = ONE_WCHAR(s[i], '\0');
     w[s.length()] = ONE_WCHAR('\0', '\0');
+#endif
     return w;
 }
 

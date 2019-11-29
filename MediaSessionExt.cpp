@@ -13,6 +13,15 @@ using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
 extern Core::CriticalSection drmAppContextMutex_;
 
 // The rights we want to request.
+#ifdef PR_3_3
+const DRM_WCHAR PLAY[] = { DRM_ONE_WCHAR('P', '\0'),
+                           DRM_ONE_WCHAR('l', '\0'),
+                           DRM_ONE_WCHAR('a', '\0'),
+                           DRM_ONE_WCHAR('y', '\0'),
+                           DRM_ONE_WCHAR('\0', '\0')
+};
+const DRM_CONST_STRING PLAY_RIGHT = DRM_CREATE_DRM_STRING(PLAY);
+#else
 const DRM_WCHAR PLAY[] = { ONE_WCHAR('P', '\0'),
                            ONE_WCHAR('l', '\0'),
                            ONE_WCHAR('a', '\0'),
@@ -20,6 +29,8 @@ const DRM_WCHAR PLAY[] = { ONE_WCHAR('P', '\0'),
                            ONE_WCHAR('\0', '\0')
 };
 const DRM_CONST_STRING PLAY_RIGHT = CREATE_DRM_STRING(PLAY);
+#endif
+
 static const DRM_CONST_STRING* RIGHTS[] = { &PLAY_RIGHT };
 
 namespace CDMi {

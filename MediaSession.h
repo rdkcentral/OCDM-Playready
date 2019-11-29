@@ -22,7 +22,6 @@
 #include <drmmathsafe.h>
 #include <drmtypes.h>
 #ifndef SIZEOF
-#define PR_3_3
 #define SIZEOF sizeof
 #include <drmcrt.h>
 #undef min
@@ -33,6 +32,9 @@
 #endif
 #include <drmerr.h>
 #include <drmerror.h>
+#if defined(PR_3_3)
+#include <drmversionconstants.h>
+#endif
 
 #undef __in
 #undef __out

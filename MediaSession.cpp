@@ -61,11 +61,7 @@ const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {WCHAR_CAST('/'), WCHAR_CAST('t'), WC
 
 const DRM_CONST_STRING g_dstrCDMDrmStoreName = CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
 
-#ifdef PR_3_3
-const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrDRM_RIGHT_PLAYBACK};
-#else
 const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrWMDRM_RIGHT_PLAYBACK};
-#endif
 
 // Parse out the first PlayReady initialization header found in the concatenated
 // block of headers in _initData_.
@@ -334,7 +330,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
                         DRM_NO_OF(g_rgpdstrRights),
                         _PolicyCallback,
                         nullptr,
-                        &m_oDecryptContext);
+                        m_oDecryptContext);
 #endif
 
   // FIXME :  Check add case Play rights already acquired
@@ -543,24 +539,23 @@ CDMi_RESULT MediaKeySession::Decrypt(
     }
     
     DRM_RESULT err = DRM_SUCCESS;
+    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
+    DRM_DWORD rgdwMappings[2];
+
+    if ( (f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL)
+        || m_eKeyState != KEY_READY
+        || (f_pbIV == NULL || f_cbIV != sizeof(DRM_UINT64)) )
+    {
+        fprintf(stderr, "Error: Decrypt - Invalid argument\n");
+        return CDMi_S_FALSE;
+    }
+
+    *f_pcbOpaqueClearContent = 0;
+    *f_ppbOpaqueClearContent = NULL;
+
+#ifndef PR_3_3
     if (!initWithLast15) {
-/* PRv3.3 support */
-#ifdef PR_3_3
-      DRM_DWORD rgdwMappings[2];
-      if( f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL )
-      {
-          dr = DRM_E_INVALIDARG;
-          goto ErrorExit;
-      }
-
-      *f_pcbOpaqueClearContent = 0;
-      *f_ppbOpaqueClearContent = NULL;
-
-      ChkBOOL(m_eKeyState == KEY_READY, DRM_E_INVALIDARG);
-      ChkArg(f_pbIV != NULL && f_cbIV == sizeof(DRM_UINT64));
-#else
       err = Drm_Reader_InitDecrypt(m_oDecryptContext, nullptr, 0);
-#endif
     } else {
         // Initialize the decryption context for Cocktail packaged
         // content. This is a no-op for AES packaged content.
@@ -578,8 +573,8 @@ CDMi_RESULT MediaKeySession::Decrypt(
         fprintf(stderr, "Failed to init decrypt\n");
         return CDMi_S_FALSE;
     }
+#endif
 
-    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
     // TODO: can be done in another way (now abusing "initWithLast15" variable)
     if (initWithLast15) {
         // Netflix case
@@ -607,28 +602,33 @@ CDMi_RESULT MediaKeySession::Decrypt(
         f_cdwSubSampleMapping = NO_OF(rgdwMappings);
     }
 
-    ChkDR(Drm_Reader_DecryptOpaque(
-        &m_oDecryptContext,
+    err = Drm_Reader_DecryptOpaque(
+        m_oDecryptContext,
         f_cdwSubSampleMapping,
         reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-        oAESContext.qwInitializationVector,
+        ctrContext.qwInitializationVector,
         payloadDataSize,
         (DRM_BYTE *) payloadData,
         reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
-        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent)));
+        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent));
 #else
     err = Drm_Reader_Decrypt(m_oDecryptContext, &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
+#endif
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
         return CDMi_S_FALSE;
     }
-#endif
 
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
         //err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
         err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, nullptr); // TODO: pass along user data
+        if (DRM_FAILED(err))
+        {
+            fprintf(stderr, "Failed to do Reader Commit\n");
+            return CDMi_S_FALSE;
+        }
         m_fCommit = TRUE;
     }
 
@@ -636,18 +636,6 @@ CDMi_RESULT MediaKeySession::Decrypt(
     // Return clear content.
     *f_pcbOpaqueClearContent = payloadDataSize;
     *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-#endif
-
-/* PRv3.3 support */
-#ifdef PR_3_3
-        if( f_pcbOpaqueClearContent != NULL )
-          {
-              *f_pcbOpaqueClearContent = 0;
-          }
-          if( f_ppbOpaqueClearContent != NULL )
-          {
-              *f_ppbOpaqueClearContent = NULL;
-          }
 #endif
 
     return CDMi_SUCCESS;
