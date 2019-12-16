@@ -22,7 +22,7 @@ set_target_properties(${MODULE_NAME} PROPERTIES
 
 if (NETFLIX_EXTENSION)
 include("${PLAYREADY_INCLUDE}/playready.cmake")
-add_compile_definitions(NETFLIX)
+target_compile_definitions(${MODULE_NAME} PRIVATE NETFLIX=ON)
 endif()
 
 target_include_directories(${MODULE_NAME}
