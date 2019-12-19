@@ -542,8 +542,8 @@ CDMi_RESULT MediaKeySession::Decrypt(
     DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
     DRM_DWORD rgdwMappings[2];
 
-    if ( (f_pcbOpaqueClearContent == NULL || f_ppbOpaqueClearContent == NULL)
-        || (f_pbIV == NULL) )
+    if ( (f_pcbOpaqueClearContent == NULL) || (f_ppbOpaqueClearContent == NULL)
+        || (f_pbIV == NULL) || (m_eKeyState != KEY_READY) )
     {
         fprintf(stderr, "Error: Decrypt - Invalid argument\n");
         return CDMi_S_FALSE;
