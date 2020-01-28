@@ -539,6 +539,20 @@ CDMi_RESULT MediaKeySession::Decrypt(
     }
     
     DRM_RESULT err = DRM_SUCCESS;
+    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
+    DRM_DWORD rgdwMappings[2];
+
+    if ( (f_pcbOpaqueClearContent == NULL) || (f_ppbOpaqueClearContent == NULL)
+        || (f_pbIV == NULL || f_cbIV == 0) || (m_eKeyState != KEY_READY) )
+    {
+        fprintf(stderr, "Error: Decrypt - Invalid argument\n");
+        return CDMi_S_FALSE;
+    }
+
+    *f_pcbOpaqueClearContent = 0;
+    *f_ppbOpaqueClearContent = NULL;
+
+#ifndef PR_3_3
     if (!initWithLast15) {
       err = Drm_Reader_InitDecrypt(m_oDecryptContext, nullptr, 0);
     } else {
@@ -558,8 +572,8 @@ CDMi_RESULT MediaKeySession::Decrypt(
         fprintf(stderr, "Failed to init decrypt\n");
         return CDMi_S_FALSE;
     }
+#endif
 
-    DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
     // TODO: can be done in another way (now abusing "initWithLast15" variable)
     if (initWithLast15) {
         // Netflix case
@@ -587,23 +601,23 @@ CDMi_RESULT MediaKeySession::Decrypt(
         f_cdwSubSampleMapping = NO_OF(rgdwMappings);
     }
 
-    ChkDR(Drm_Reader_DecryptOpaque(
-        &m_oDecryptContext,
+    err = Drm_Reader_DecryptOpaque(
+        m_oDecryptContext,
         f_cdwSubSampleMapping,
         reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-        oAESContext.qwInitializationVector,
+        ctrContext.qwInitializationVector,
         payloadDataSize,
         (DRM_BYTE *) payloadData,
         reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
-        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent)));
+        reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent));
 #else
     err = Drm_Reader_Decrypt(m_oDecryptContext, &ctrContext, (DRM_BYTE*)payloadData, payloadDataSize);
+#endif
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
         return CDMi_S_FALSE;
     }
-#endif
 
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
