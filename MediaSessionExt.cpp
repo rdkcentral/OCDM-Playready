@@ -240,6 +240,7 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
         fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
         return CDMi_OUT_OF_MEMORY ;
     }
+    m_eKeyState = KEY_PENDING;
 #endif
     return CDMi_SUCCESS;
 }
@@ -315,6 +316,12 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     } else {
         fprintf(stderr, "Error: secure stop ID is not valid\n");
         result = CDMi_S_FALSE;
+    }
+    if (result == CDMi_SUCCESS) {
+        m_eKeyState = KEY_READY;
+    }
+    else {
+        m_eKeyState = KEY_ERROR;
     }
 #endif
     return result;
