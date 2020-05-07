@@ -26,6 +26,7 @@ set(MODULE_NAME Playready)
 
 option(NETFLIX_EXTENSION "Enable DRM with Netflix extension" ON)
 
+find_package(${NAMESPACE}Core REQUIRED)
 find_package(PlayReady REQUIRED)
 
 add_library(${MODULE_NAME} SHARED
@@ -51,9 +52,11 @@ target_include_directories(${MODULE_NAME}
 if (NETFLIX_EXTENSION)
 target_link_libraries(${MODULE_NAME}
     PRIVATE
+        ${NAMSPACE}Core::${NAMESPACE}Core
         PlayReady::PlayReady)
 else()
 target_link_libraries(${MODULE_NAME}
+    ${NAMSPACE}Core::${NAMESPACE}Core
     ${PLAYREADY_LIBRARIES})
 endif()
 
