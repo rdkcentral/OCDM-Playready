@@ -52,7 +52,7 @@ target_include_directories(${MODULE_NAME}
 if (NETFLIX_EXTENSION)
 target_link_libraries(${MODULE_NAME}
     PRIVATE
-        ${NAMSPACE}Core::${NAMESPACE}Core
+        ${NAMESPACE}Core::${NAMESPACE}Core
         PlayReady::PlayReady)
 else()
 target_link_libraries(${MODULE_NAME}
