@@ -56,7 +56,7 @@ target_link_libraries(${MODULE_NAME}
         PlayReady::PlayReady)
 else()
 target_link_libraries(${MODULE_NAME}
-    ${NAMSPACE}Core::${NAMESPACE}Core
+    ${NAMESPACE}Core::${NAMESPACE}Core
     ${PLAYREADY_LIBRARIES})
 endif()
 
