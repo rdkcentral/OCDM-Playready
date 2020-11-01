@@ -231,15 +231,13 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 
     mNounce.resize(TEE_SESSION_ID_LEN);
 
-    fprintf(stderr, "challengeSize: %u\n", challengeSize);
-    fprintf(stderr, "challenge: %p\n", challenge);
-    fprintf(stderr, "isLDL: %u\n", isLDL);
-
     // PlayReady doesn't like valid pointer + size 0
     DRM_BYTE* passedChallenge = static_cast<DRM_BYTE*>(challenge);
     if (challengeSize == 0) {
         passedChallenge = nullptr;
     }
+
+    const uint32_t requestedChallangeSize = challengeSize;
 
     err = Drm_LicenseAcq_GenerateChallenge_Netflix(m_poAppContext,
                                                    RIGHTS,
@@ -251,8 +249,6 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
                                                    passedChallenge, &challengeSize,
                                                    &mNounce[0], isLDL);
 
-    fprintf(stderr, "ChallengeSize: %u\n", challengeSize);
-
     if ((err != DRM_E_BUFFERTOOSMALL) && (DRM_FAILED(err)))
     {
         fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
@@ -260,7 +256,9 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
     }
 
     if (err == DRM_E_BUFFERTOOSMALL) {
-        fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
+        if (requestedChallangeSize != 0) {
+            fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
+        }
         return CDMi_OUT_OF_MEMORY ;
     }
     m_eKeyState = KEY_PENDING;
