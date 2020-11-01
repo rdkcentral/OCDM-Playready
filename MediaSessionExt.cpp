@@ -68,6 +68,10 @@ static void * PlayLevelUpdateCallback(void * data)
 {
     CallbackInfo * callbackInfo = static_cast<CallbackInfo *>(data);
 
+    // When a detached thread terminates, its resources are automatically released back to the system 
+    // (i.e. without the need for another thread to join with it).
+    pthread_detach(pthread_self());
+
     stringstream keyMessage;
     keyMessage << "{";
     keyMessage << "\"compressed-video\": " << callbackInfo->_compressedVideo << ",";
