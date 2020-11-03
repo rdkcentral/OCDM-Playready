@@ -261,11 +261,24 @@ public:
         uint8_t uuid[TEE_SESSION_ID_LEN];
         memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
 
-        // PlayReady doesn't like valid pointer + size 0
-        DRM_BYTE* passedRawData = static_cast<DRM_BYTE*>(rawData);
+        const uint16_t maxRawSize = rawSize;
+
+        DRM_BYTE* passedRawData;
+
+        if ((rawData == nullptr) && (rawSize == 0)) {
+            // PlayReady checks against NULL pointer even if size is 0
+            uint8_t tmpBuffer;
+            rawSize = sizeof(tmpBuffer);
+            passedRawData = static_cast<DRM_BYTE*>(&tmpBuffer);
+        } else {
+            passedRawData = static_cast<DRM_BYTE*>(rawData);
+        }
+
         DRM_RESULT err = Drm_GetSecureStop(m_poAppContext.get(), uuid, passedRawData, &rawSize);
-        if (err != DRM_E_BUFFERTOOSMALL) {
-            fprintf(stderr, "Drm_GetSecureStop(0) returned 0x%lx\n", (long)err);
+        if (DRM_FAILED(err)) {
+            if ((err != DRM_E_BUFFERTOOSMALL) || (maxRawSize != 0)) {
+                fprintf(stderr, "Drm_GetSecureStop returned 0x%lx\n", (long)err);
+            }
             return CDMi_S_FALSE;
         }
 #endif
