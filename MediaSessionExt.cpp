@@ -181,6 +181,17 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
         return CDMi_S_FALSE;
     }
 
+    m_eKeyState = KEY_READY;
+
+    if (m_piCallback) {
+        for (int i = 0; i < mLicenseResponse->get()->m_cAcks; ++i) {
+            if (DRM_SUCCEEDED(mLicenseResponse->get()->m_rgoAcks[i].m_dwResult)) {
+                m_piCallback->OnKeyStatusUpdate("KeyUsable", mLicenseResponse->get()->m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
+            }
+        }
+      m_piCallback->OnKeyStatusesUpdated();
+    }
+
     // Also store copy of secure stop id in session struct
     mSecureStopId.clear();
     mSecureStopId.resize(TEE_SESSION_ID_LEN);
