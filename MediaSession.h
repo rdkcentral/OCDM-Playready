@@ -32,9 +32,7 @@
 #endif
 #include <drmerr.h>
 #include <drmerror.h>
-#if defined(PR_3_3)
 #include <drmversionconstants.h>
-#endif
 
 #undef __in
 #undef __out
@@ -43,6 +41,8 @@
 #include <memory>
 //#include <cdmi.h>
 #include <interfaces/IDRM.h>
+
+#include <core/core.h>
 
 namespace CDMi {
 
@@ -143,9 +143,8 @@ private:
 
 
     static DRM_RESULT DRM_CALL _PolicyCallback(const DRM_VOID *, DRM_POLICY_CALLBACK_TYPE f_dwCallbackType, 
-#ifdef PR_3_3
-    const DRM_KID *, const DRM_LID *,
-#endif
+    const DRM_KID *,
+    const DRM_LID *,
     const DRM_VOID *);
 
     DRM_BYTE *m_pbOpaqueBuffer;
@@ -160,6 +159,15 @@ private:
     DRM_CHAR *m_pchSilentURL;  
     std::string m_customData;
     IMediaKeySessionCallback *m_piCallback;
+    void CleanLicenseStore(DRM_APP_CONTEXT *pDrmAppCtx);
+
+    inline void PrintBase64(const int32_t length, const uint8_t* data, const char id[])
+    {
+        std::string base64, hex;
+        WPEFramework::Core::ToString(data, length, true, base64);
+        WPEFramework::Core::ToHexString(data, length, hex);
+        fprintf(stderr, "%s: %s\t[%s]", id, base64.c_str(), hex.c_str());
+    }
 
 private:
     std::vector<uint8_t> mDrmHeader;
@@ -169,6 +177,7 @@ private:
     std::vector<uint8_t> mSecureStopId;
     PlayLevels levels_;
     bool mInitiateChallengeGeneration;
+    DRM_ID mBatchId;
 
 protected:
     DRM_BOOL m_fCommit;

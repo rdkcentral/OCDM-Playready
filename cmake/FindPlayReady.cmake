@@ -34,10 +34,6 @@ if(PC_PLAYREADY_FOUND)
         endif()
     endif()
 
-    if (PC_PLAYREADY_VERSION AND "${PC_PLAYREADY_VERSION}" EQUAL "3.3")
-        add_definitions(-DPR_3_3)
-    endif()
-
     if(PC_PLAYREADY_FOUND)
         find_path (PLAYREADY_INCLUDE NAME "playready.cmake" PATHS "usr/include/" PATH_SUFFIXES "playready")
         set(PLAYREADY_FLAGS ${PC_PLAYREADY_CFLAGS_OTHER} -DTARGET_SUPPORTS_UNALIGNED_DWORD_POINTERS=0 -DTARGET_LITTLE_ENDIAN=1)
