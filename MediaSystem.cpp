@@ -116,8 +116,10 @@ private:
         Config()
             : Core::JSON::Container()
             , MeteringCertificate()
+            , CertificateLabel()
         {
             Add(_T("metering"), &MeteringCertificate);
+            Add(_T("certificatelabel"), &CertificateLabel);
         }
         ~Config()
         {
@@ -125,6 +127,7 @@ private:
 
     public:
         Core::JSON::String MeteringCertificate;
+        Core::JSON::String CertificateLabel;
     };
 
 public:
@@ -432,6 +435,10 @@ public:
 
                 ::memcpy(m_meteringCertificate, dataBuffer.Buffer(), dataBuffer.Size());
             }
+        }
+
+        if ((config.CertificateLabel.IsSet() == true) && (config.CertificateLabel.Value().empty() == false)) {
+            Core::SystemInfo::SetEnvironment(_T("PLAYREADY_CERTIFICATE_LABEL"), config.CertificateLabel.Value());
         }
 
         Core::Directory stateDir(statePath.c_str());
