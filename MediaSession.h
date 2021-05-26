@@ -16,6 +16,7 @@
  */
 
 #pragma once
+#include "Module.h"
 
 #include <drmbuild_oem.h>
 #include <drmmanager.h>
