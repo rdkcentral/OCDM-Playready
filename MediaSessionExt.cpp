@@ -145,16 +145,17 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
             mLicenseResponse->get());
 
 
-    if(DRM_SUCCEEDED(err))
-       m_eKeyState = KEY_READY;
+    if (DRM_SUCCEEDED(err)) {
+        m_eKeyState = KEY_READY;
+    }
 
     if (m_piCallback && DRM_SUCCEEDED(err)) {
-        for (int i = 0; i < mLicenseResponse->get()->m_cAcks; ++i) {
+        for (uint32_t i = 0; i < mLicenseResponse->get()->m_cAcks; ++i) {
             if (DRM_SUCCEEDED(mLicenseResponse->get()->m_rgoAcks[i].m_dwResult)) {
                 m_piCallback->OnKeyStatusUpdate("KeyUsable", mLicenseResponse->get()->m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
             }
         }
-      m_piCallback->OnKeyStatusesUpdated();
+        m_piCallback->OnKeyStatusesUpdated();
     }
 
 // First, check the return code of Drm_LicenseAcq_ProcessResponse()
@@ -252,8 +253,6 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 {
     DRM_RESULT err;
 
-    uint32_t passedChallengeSize = challengeSize;
-
     SafeCriticalSection systemLock(drmAppContextMutex_);
 
     // sanity check for drm header
@@ -326,7 +325,7 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     SafeCriticalSection systemLock(drmAppContextMutex_);
     DRM_RESULT err;
     CDMi_RESULT result = CDMi_SUCCESS;
-   
+
     ASSERT(m_poAppContext != nullptr);
 
     err = Drm_Content_SetProperty(m_poAppContext,
@@ -346,7 +345,7 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     //Create a decrypt context and bind it with the drm context.
     memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
 
-	err = Drm_Reader_Bind(
+    err = Drm_Reader_Bind(
                 m_poAppContext,
                 RIGHTS,
                 sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
@@ -369,9 +368,9 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
         }
 
     if (result == CDMi_SUCCESS) {
-            m_fCommit = TRUE;
-            m_decryptInited = true;
-	    m_eKeyState = KEY_READY;
+        m_fCommit = TRUE;
+        m_decryptInited = true;
+        m_eKeyState = KEY_READY;
     }
     else {
         m_eKeyState = KEY_ERROR;
@@ -383,7 +382,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
 {
     // open scope for DRM_APP_CONTEXT mutex
     SafeCriticalSection systemLock(drmAppContextMutex_);
-    DRM_RESULT err;
+
     fprintf(stderr, "MediaKeySession::CleanDecryptContext\n");
     CDMi_RESULT result = CDMi_SUCCESS;
 
@@ -391,8 +390,7 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
     ASSERT(m_poAppContext != nullptr);
 
     if (m_oDecryptContext != nullptr) {
-        Drm_Reader_Close(m_oDecryptContext);
-	fprintf(stderr, "Closing active decrypt context");
+        fprintf(stderr, "Closing active decrypt context");
         Drm_Reader_Close(m_oDecryptContext);
         delete m_oDecryptContext;
         m_oDecryptContext = nullptr;

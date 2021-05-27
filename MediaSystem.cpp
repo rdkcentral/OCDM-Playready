@@ -14,26 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "Module.h"
 
-#include <plugins/plugins.h>
-//#include <cdmi.h>
-#include <interfaces/IDRM.h>
 #include <memory>
 #include <vector>
 #include <iostream>
 #include <string.h>
 
-#include <core/core.h>
+#include "MediaSession.h"
 #include <cryptalgo/cryptalgo.h>
-
+#include <interfaces/IDRM.h>
+#include <plugins/plugins.h>
 
 // <plugins/plugins.h> has its own TRACING mechanism. We do not want to use those, undefine it here to avoid a warning.
 // with the TRACE macro of the PLAYREADY software.
 #undef TRACE
-
-#include "MediaSession.h"
-
 
 using namespace std;
 using namespace WPEFramework;
@@ -135,14 +129,14 @@ public:
     PlayReady() :
        m_poAppContext(nullptr)
        , m_meteringCertificate(nullptr)
-       , m_meteringCertificateSize(0)	{
+       , m_meteringCertificateSize(0) {
     }
 
     ~PlayReady(void) {
         if (m_poAppContext)
             Drm_Uninitialize(m_poAppContext.get());
 
-	if (m_meteringCertificate != nullptr) {
+        if (m_meteringCertificate != nullptr) {
             delete [] m_meteringCertificate;
             m_meteringCertificate = nullptr;
         }
@@ -190,7 +184,7 @@ public:
     ////////////////////
     uint64_t GetDrmSystemTime() const override
     {
-       fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
+        fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
 
         // Playready version > 3 supports client time completely within the opaque blobs sent
         // between the Playready client and server, so this function should really
@@ -217,7 +211,7 @@ public:
         return string(versionStr);
     }
 
-   uint32_t GetLdlSessionLimit() const override
+    uint32_t GetLdlSessionLimit() const override
     {
         return NONCE_STORE_SIZE;
     }
@@ -276,7 +270,6 @@ public:
         return cr;
     }
 
-
     CDMi_RESULT GetSecureStop(
             const uint8_t sessionID[],
             uint32_t sessionIDLength,
@@ -316,7 +309,7 @@ public:
         return cr;
     }
 
-   CDMi_RESULT CommitSecureStop(
+    CDMi_RESULT CommitSecureStop(
             const uint8_t sessionID[],
             uint32_t sessionIDLength,
             const uint8_t serverResponse[],
@@ -333,7 +326,7 @@ public:
             cr = CDMi_S_FALSE;
         }
 
-	if (cr == CDMi_SUCCESS){
+        if (cr == CDMi_SUCCESS){
             DRM_ID sessionDrmId;
             ASSERT(sizeof(sessionDrmId.rgb) >= sessionIDLength);
             memcpy(sessionDrmId.rgb, sessionID, sessionIDLength);
@@ -351,8 +344,7 @@ public:
                 serverResponse,
                 &customDataSizeBytes,
                 &pCustomData);
-            if (dr == DRM_SUCCESS)
-            {
+            if (dr == DRM_SUCCESS) {
                 fprintf(stderr, "secure stop commit successful");
                 if (pCustomData && customDataSizeBytes)
                 {
@@ -361,21 +353,18 @@ public:
                     fprintf(stderr, "custom data = \"%s\"", customDataStr.c_str());
                 }
             }
-            else
-            {
+            else {
                 fprintf(stderr, "Drm_SecureStop_ProcessResponse returned 0x%lx", static_cast<unsigned long>(dr));
             }
 
             SAFE_OEM_FREE(pCustomData);
-         }
+        }
 
         return cr;
     }
 
     CDMi_RESULT DeleteKeyStore() override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-
         // There is no keyfile in PlayReady version > 3, so we cannot implement this function.
         return CDMi_SUCCESS;
     }
@@ -420,12 +409,11 @@ public:
         string statePath = persistentPath + "/state"; // To store rollback clock state etc
         m_readDir = persistentPath + "/playready";
         m_storeLocation = persistentPath + "/playready/storage/drmstore";
-
        
-	Config config;
+        Config config;
         config.FromString(configline);
 
-	if (config.MeteringCertificate.IsSet() == true) {
+        if (config.MeteringCertificate.IsSet() == true) {
             Core::DataElementFile dataBuffer(config.MeteringCertificate.Value(), Core::File::USER_READ | Core::File::GROUP_READ);
 
             if(dataBuffer.IsValid() == false) {

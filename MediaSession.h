@@ -16,7 +16,8 @@
  */
 
 #pragma once
-#include "Module.h"
+
+#define MODULE_NAME OCDM_Playready
 
 #include <drmbuild_oem.h>
 #include <drmmanager.h>
@@ -40,7 +41,6 @@
 
 #include <string.h>
 #include <memory>
-//#include <cdmi.h>
 #include <interfaces/IDRM.h>
 
 #include <core/core.h>

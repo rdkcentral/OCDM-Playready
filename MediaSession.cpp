@@ -47,6 +47,8 @@ extern Core::CriticalSection drmAppContextMutex_;
 #define NO_OF DRM_NO_OF
 #endif
 
+MODULE_NAME_DECLARATION(BUILD_REFERENCE);
+
 using namespace std;
 
 namespace CDMi {
@@ -418,7 +420,7 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
 
   if (m_eKeyState == KEY_READY) {
     if (m_piCallback) {
-      for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
+      for (uint32_t i = 0; i < oLicenseResponse.m_cAcks; ++i) {
         if (DRM_SUCCEEDED(oLicenseResponse.m_rgoAcks[i].m_dwResult)) {
             m_piCallback->OnKeyStatusUpdate("KeyUsable", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
         }
@@ -439,7 +441,7 @@ ErrorExit:
 
     // The upper layer is blocked waiting for an update, let's wake it.
     if (m_piCallback) {
-      for (int i = 0; i < oLicenseResponse.m_cAcks; ++i) {
+      for (uint32_t i = 0; i < oLicenseResponse.m_cAcks; ++i) {
         m_piCallback->OnKeyStatusUpdate("KeyError", oLicenseResponse.m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
       }
       m_piCallback->OnKeyStatusesUpdated();
@@ -570,7 +572,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
         (DRM_BYTE *) payloadData,
         reinterpret_cast<DRM_DWORD*>(f_pcbOpaqueClearContent),
         reinterpret_cast<DRM_BYTE**>(f_ppbOpaqueClearContent));
-    
+
     if (DRM_FAILED(err))
     {
         fprintf(stderr, "Failed to run Drm_Reader_Decrypt\n");
