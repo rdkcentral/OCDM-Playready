@@ -22,7 +22,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <sstream>
-
+#include <byteswap.h>
 using namespace std;
 
 #include <core/core.h>
@@ -32,7 +32,6 @@ using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
 extern Core::CriticalSection drmAppContextMutex_;
 
 // The rights we want to request.
-#ifdef PR_3_3
 const DRM_WCHAR PLAY[] = { DRM_ONE_WCHAR('P', '\0'),
                            DRM_ONE_WCHAR('l', '\0'),
                            DRM_ONE_WCHAR('a', '\0'),
@@ -40,15 +39,6 @@ const DRM_WCHAR PLAY[] = { DRM_ONE_WCHAR('P', '\0'),
                            DRM_ONE_WCHAR('\0', '\0')
 };
 const DRM_CONST_STRING PLAY_RIGHT = DRM_CREATE_DRM_STRING(PLAY);
-#else
-const DRM_WCHAR PLAY[] = { ONE_WCHAR('P', '\0'),
-                           ONE_WCHAR('l', '\0'),
-                           ONE_WCHAR('a', '\0'),
-                           ONE_WCHAR('y', '\0'),
-                           ONE_WCHAR('\0', '\0')
-};
-const DRM_CONST_STRING PLAY_RIGHT = CREATE_DRM_STRING(PLAY);
-#endif
 
 static const DRM_CONST_STRING* RIGHTS[] = { &PLAY_RIGHT };
 
@@ -92,7 +82,13 @@ static void * PlayLevelUpdateCallback(void * data)
     return nullptr;
 }
 
-static DRM_RESULT opencdm_output_levels_callback(const DRM_VOID *outputLevels, DRM_POLICY_CALLBACK_TYPE callbackType, const DRM_VOID *data) {
+DRM_RESULT opencdm_output_levels_callback(
+    const DRM_VOID *outputLevels,
+    DRM_POLICY_CALLBACK_TYPE callbackType,
+    const DRM_KID * /*f_pKID */,
+    const DRM_LID * /*f_pLID*/,
+    const DRM_VOID *data)
+{
     // We only care about the play callback.
     if (callbackType != DRM_PLAY_OPL_CALLBACK)
         return DRM_SUCCESS;
@@ -136,79 +132,129 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t licenseData[], uint3
     // open scope for DRM_APP_CONTEXT mutex
     SafeCriticalSection systemLock(drmAppContextMutex_);
 
-#ifdef NETFLIX
-    // Make sure PlayReady still expects a 16 byte array.
-    ASSERT(TEE_SESSION_ID_LEN == 16);
-
-    memset(secureStopId, 0, TEE_SESSION_ID_LEN);
-
     DRM_RESULT err;
 
-    // reinitialze DRM_APP_CONTEXT and set DRM header for current session
-    err = Drm_Reinitialize(m_poAppContext);
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
-
-    err = Drm_Content_SetProperty(m_poAppContext,
-                                  DRM_CSP_AUTODETECT_HEADER,
-                                  &mDrmHeader[0],
-                                  mDrmHeader.size());
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
 
     mLicenseResponse->clear();
 
-    // For whatever reason Drm_LicenseAcq_ProcessResponse_Netflix needs a non-const pointer to the license data...
-    std::vector<uint8_t> localLicenseData;
-    localLicenseData.resize(licenseDataSize);
-    memcpy(&localLicenseData[0], licenseData, licenseDataSize);
+    err = Drm_LicenseAcq_ProcessResponse(
+            m_poAppContext,
+            DRM_PROCESS_LIC_RESPONSE_SIGNATURE_NOT_REQUIRED,
+            &licenseData[0],
+            (DRM_DWORD)licenseDataSize,
+            mLicenseResponse->get());
 
-    err = Drm_LicenseAcq_ProcessResponse_Netflix(m_poAppContext,
-                                                 DRM_PROCESS_LIC_RESPONSE_NO_FLAGS,
-                                                 nullptr, nullptr,
-                                                 &localLicenseData[0],
-                                                 (DRM_DWORD)localLicenseData.size(),
-                                                 secureStopId,
-                                                 mLicenseResponse->get());
-    if (DRM_FAILED(err)) {
-        fprintf(stderr, "Error: Drm_LicenseAcq_ProcessResponse_Netflix returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
+
+    if (DRM_SUCCEEDED(err)) {
+        m_eKeyState = KEY_READY;
     }
 
-    m_eKeyState = KEY_READY;
-
-    if (m_piCallback) {
-        for (int i = 0; i < mLicenseResponse->get()->m_cAcks; ++i) {
+    if (m_piCallback && DRM_SUCCEEDED(err)) {
+        for (uint32_t i = 0; i < mLicenseResponse->get()->m_cAcks; ++i) {
             if (DRM_SUCCEEDED(mLicenseResponse->get()->m_rgoAcks[i].m_dwResult)) {
                 m_piCallback->OnKeyStatusUpdate("KeyUsable", mLicenseResponse->get()->m_rgoAcks[i].m_oKID.rgb, DRM_ID_SIZE);
             }
         }
-      m_piCallback->OnKeyStatusesUpdated();
+        m_piCallback->OnKeyStatusesUpdated();
     }
 
-    // Also store copy of secure stop id in session struct
-    mSecureStopId.clear();
-    mSecureStopId.resize(TEE_SESSION_ID_LEN);
-    mSecureStopId.assign(secureStopId, secureStopId + TEE_SESSION_ID_LEN);
-#endif
+// First, check the return code of Drm_LicenseAcq_ProcessResponse()
+    if (err ==  DRM_E_LICACQ_TOO_MANY_LICENSES) {
+        // This means the server response contained more licenses than
+        // DRM_MAX_LICENSE_ACK (usually 20). Should allocate space and retry.
+        // FIXME NRDLIB-4481: This will need to be implemented when we start
+        // using batch license requests.
+        fprintf(stderr, "Drm_LicenseAcq_ProcessResponse too many licenses in response.");
+        return CDMi_S_FALSE;
+    }
+    else if (DRM_FAILED(err)) {
+        fprintf(stderr, "Drm_LicenseAcq_ProcessResponse failed (error: 0x%08X)", static_cast<unsigned int>(err));
+        return CDMi_S_FALSE;
+    }
 
+    // Next, examine the returned drmLicenseResponse struct for a top-level error.
+    if (DRM_FAILED(mLicenseResponse->get()->m_dwResult)) {
+        fprintf(stderr, "Error in DRM_LICENSE_RESPONSE");
+        return CDMi_S_FALSE;
+    }
+
+    // Finally, ensure that each license in the response was processed
+    // successfully.
+    const DRM_DWORD nLicenses = mLicenseResponse->get()->m_cAcks;
+    for (uint32_t i=0; i < nLicenses; ++i)
+    {
+        fprintf(stderr, "Checking license %d", i);
+        if (DRM_FAILED(mLicenseResponse->get()->m_rgoAcks[i].m_dwResult)) {
+            // Special handling for DRM_E_DST_STORE_FULL. If this error is
+            // detected for any license, reset the DRM appcontext and return error.
+            if (mLicenseResponse->get()->m_rgoAcks[i].m_dwResult == DRM_E_DST_STORE_FULL) {
+                fprintf(stderr, "Found DRM_E_DST_STORE_FULL error in license %d, reinitializing!", i);
+                
+                err = Drm_Reinitialize(m_poAppContext);
+                if (DRM_FAILED(err))
+                {
+                    fprintf(stderr, "Error: Drm_Reinitialize returned (error: 0x%08X)", static_cast<unsigned int>(err));
+                    return CDMi_S_FALSE;
+                }
+
+            }
+            else {
+                fprintf(stderr, "Error 0x%08lX found in license %d", (unsigned long)mLicenseResponse->get()->m_rgoAcks[i].m_dwResult, i);
+            }
+            return CDMi_S_FALSE;
+        }
+    }
+
+    // === Extract various ID's from drmLicenseResponse
+    //
+    // There are 3 ID's in the processed license response we are interested in:
+    // BID - License batch ID. A GUID that uniquely identifies a batch of
+    //       licenses that were processed in one challenge/response transaction.
+    //       The BID is a nonce unique to the transaction. If the transaction
+    //       contains a single license, this is identical to the license nonce.
+    //       The secure stop ID is set to the BID value.
+    // KID - Key ID. A GUID that uniquely identifies the media content key. This
+    //       is the primary index for items in the license store. There can be
+    //       multiple licenses with the same KID.
+    // LID - License ID. A GUID that uniquely identifies a license. This is the
+    //       secondary index for items in the license store.
+    // When there are multiple licenses in the server response as in the PRK
+    // case, there are correspondingly multiple KID/LID entries in the processed
+    // response. There is always only a single BID per server response.
+
+    // BID
+    mBatchId = mLicenseResponse->get()->m_oBatchID; 
+    PrintBase64(sizeof(mBatchId.rgb), mBatchId.rgb, "BatchId/SecureStopId");
+
+    // Microsoft says that a batch ID of all zeros indicates some sort of error
+    // for in-memory licenses. Hopefully this error was already caught above.
+    const uint8_t zeros[sizeof(mBatchId.rgb)] = { 0 };
+    if(memcmp(mBatchId.rgb, zeros, sizeof(mBatchId.rgb)) == 0){
+        fprintf(stderr, "No batch ID in processed response");
+        return CDMi_S_FALSE;
+    }
+    // We take the batch ID as the secure stop ID
+    memcpy(secureStopId, mBatchId.rgb, sizeof(mBatchId.rgb));
+
+    // KID and LID
+    fprintf(stderr, "Found %d license%s in server response for :", nLicenses, (nLicenses > 1) ? "s" : "");
+    for (uint32_t i=0; i < nLicenses; ++i)
+    {
+        const DRM_LICENSE_ACK * const licAck = &mLicenseResponse->get()->m_rgoAcks[i];
+        fprintf(stderr, "KID/LID[%d]:", i);
+        PrintBase64(sizeof(licAck->m_oLID.rgb), licAck->m_oLID.rgb, "LID");
+        PrintBase64(sizeof(licAck->m_oKID.rgb), licAck->m_oKID.rgb, "KID");
+    }
     // All done.
     return CDMi_SUCCESS;
 }
 
-CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t isLDL)
+CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t & challengeSize, uint32_t /* isLDL */)
 {
     DRM_RESULT err;
 
     SafeCriticalSection systemLock(drmAppContextMutex_);
 
-#ifdef NETFLIX
     // sanity check for drm header
     if (mDrmHeader.size() == 0)
     {
@@ -218,14 +264,6 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
 
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
     ASSERT(m_poAppContext != nullptr);
-
-    // reinitialize DRM_APP_CONTEXT - this is limitation of PlayReady 2.x
-    err = Drm_Reinitialize(m_poAppContext);
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
 
     /*
      * Set the drm context's drm header property to the systemSpecificData.
@@ -240,53 +278,44 @@ CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * challenge, uint32_t &
         return CDMi_S_FALSE;
     }
 
-    mNounce.resize(TEE_SESSION_ID_LEN);
-
     // PlayReady doesn't like valid pointer + size 0
     DRM_BYTE* passedChallenge = static_cast<DRM_BYTE*>(challenge);
     if (challengeSize == 0) {
         passedChallenge = nullptr;
     }
 
-    const uint32_t requestedChallangeSize = challengeSize;
 
-    err = Drm_LicenseAcq_GenerateChallenge_Netflix(m_poAppContext,
-                                                   RIGHTS,
-                                                   sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                                   nullptr,
-                                                   nullptr, 0,
-                                                   nullptr, nullptr,
-                                                   nullptr, nullptr,
-                                                   passedChallenge, &challengeSize,
-                                                   &mNounce[0], isLDL);
+    // Find the size of the challenge.
+    err = Drm_LicenseAcq_GenerateChallenge(m_poAppContext,
+                                            RIGHTS,
+                                            sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                                            nullptr,
+                                            nullptr,
+                                            0,
+                                            nullptr,
+                                            nullptr,
+                                            nullptr,
+                                            nullptr,
+                                            passedChallenge,
+                                            &challengeSize,
+                                            nullptr);
 
     if ((err != DRM_E_BUFFERTOOSMALL) && (DRM_FAILED(err)))
     {
-        fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
+        fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge returned 0x%lX\n", (long)err);
         return CDMi_S_FALSE;
     }
 
-    if (err == DRM_E_BUFFERTOOSMALL) {
-        if (requestedChallangeSize != 0) {
-            fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge_Netflix returned 0x%lX\n", (long)err);
-        }
+    if ((passedChallenge != nullptr) && (err == DRM_E_BUFFERTOOSMALL)){
+        fprintf(stderr, "Error: Drm_LicenseAcq_GenerateChallenge (error: 0x%08X)", static_cast<unsigned int>(err));
         return CDMi_OUT_OF_MEMORY ;
     }
-    m_eKeyState = KEY_PENDING;
-#endif
+
     return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::CancelChallengeDataExt()
 {
-    SafeCriticalSection systemLock(drmAppContextMutex_);
-#ifdef NETFLIX
-    DRM_RESULT err = Drm_LicenseAcq_CancelChallenge_Netflix(m_poAppContext, &mNounce[0]);
-    if (DRM_FAILED(err)) {
-        fprintf(stderr, "Error Drm_LicenseAcq_CancelChallenge_Netflix: 0x%08lx\n", static_cast<unsigned long>(err));
-        return CDMi_S_FALSE;
-    }
-#endif
     return CDMi_SUCCESS;
 }
 
@@ -296,15 +325,9 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     SafeCriticalSection systemLock(drmAppContextMutex_);
     DRM_RESULT err;
     CDMi_RESULT result = CDMi_SUCCESS;
-#ifdef NETFLIX
-    // reinitialze DRM_APP_CONTEXT and set DRM header for current session for
-    // simulataneous decryption support
-    err = Drm_Reinitialize(m_poAppContext);
-    if (DRM_FAILED(err))
-    {
-        fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-        return CDMi_S_FALSE;
-    }
+
+    ASSERT(m_poAppContext != nullptr);
+
     err = Drm_Content_SetProperty(m_poAppContext,
                                   DRM_CSP_AUTODETECT_HEADER,
                                   &mDrmHeader[0],
@@ -317,16 +340,18 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
     if (m_decryptInited) {
         return CDMi_SUCCESS;
     }
+
     m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
     //Create a decrypt context and bind it with the drm context.
     memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
-    if(mSecureStopId.size() == TEE_SESSION_ID_LEN ){
-        err = Drm_Reader_Bind_Netflix(m_poAppContext,
-                                      RIGHTS,
-                                      sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                      &opencdm_output_levels_callback, m_piCallback,
-                                      &mSecureStopId[0],
-                                      m_oDecryptContext);
+
+    err = Drm_Reader_Bind(
+                m_poAppContext,
+                RIGHTS,
+                sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                &opencdm_output_levels_callback,
+                m_piCallback,
+                m_oDecryptContext);
 
         if (DRM_FAILED(err))
         {
@@ -341,21 +366,15 @@ CDMi_RESULT MediaKeySession::SelectKeyId(const uint8_t /* keyLength */, const ui
                 result = CDMi_S_FALSE;
             }
         }
-        if (result == CDMi_SUCCESS) {
-            m_fCommit = TRUE;
-            m_decryptInited = true;
-        }
-    } else {
-        fprintf(stderr, "Error: secure stop ID is not valid\n");
-        result = CDMi_S_FALSE;
-    }
+
     if (result == CDMi_SUCCESS) {
+        m_fCommit = TRUE;
+        m_decryptInited = true;
         m_eKeyState = KEY_READY;
     }
     else {
         m_eKeyState = KEY_ERROR;
     }
-#endif
     return result;
 }
 
@@ -363,99 +382,21 @@ CDMi_RESULT MediaKeySession::CleanDecryptContext()
 {
     // open scope for DRM_APP_CONTEXT mutex
     SafeCriticalSection systemLock(drmAppContextMutex_);
-    DRM_RESULT err;
 
+    fprintf(stderr, "MediaKeySession::CleanDecryptContext\n");
     CDMi_RESULT result = CDMi_SUCCESS;
 
-#ifdef NETFLIX
     // Seems like we no longer have to worry about invalid app context, make sure with this ASSERT.
     ASSERT(m_poAppContext != nullptr);
-    if (m_oDecryptContext) {
-        err = Drm_Reader_Unbind(m_poAppContext, m_oDecryptContext);
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error Drm_Reader_Unbind: 0x%08lx when creating temporary DRM_DECRYPT_CONTEXT\n",
-                       static_cast<unsigned long>(err));
-            result = CDMi_S_FALSE;
-        }
 
-    } else {
-
-        // reinitialize DRM_APP_CONTEXT - this is limitation of PlayReady 2.x
-        err = Drm_Reinitialize(m_poAppContext);
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error: Drm_Reinitialize returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
-        }
-
-        // sanity check for drm header
-        if (mDrmHeader.size() == 0)
-        {
-            fprintf(stderr, "Error: No valid DRM header\n");
-            return CDMi_S_FALSE;
-        }
-
-        /*
-         * Set the drm context's drm header property to the systemSpecificData.
-         */
-        err = Drm_Content_SetProperty(m_poAppContext,
-                                      DRM_CSP_AUTODETECT_HEADER,
-                                      &mDrmHeader[0],
-                                      mDrmHeader.size());
-        if (DRM_FAILED(err))
-        {
-            fprintf(stderr, "Error: Drm_Content_SetProperty returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
-        }
-
-        //Create a decrypt context and bind it with the drm context.
-        m_oDecryptContext = new DRM_DECRYPT_CONTEXT;
-        memset(m_oDecryptContext, 0, sizeof(DRM_DECRYPT_CONTEXT));
-
-        if (mSecureStopId.size() == TEE_SESSION_ID_LEN )
-        {
-            err = Drm_Reader_Bind_Netflix(m_poAppContext,
-                                          RIGHTS,
-                                          sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                                          &opencdm_output_levels_callback, nullptr,
-                                          &mSecureStopId[0],
-                                          m_oDecryptContext);
-            if (DRM_FAILED(err))
-            {
-                fprintf(stderr, "Error: Drm_Reader_Bind_Netflix returned 0x%lX\n", (long)err);
-                result = CDMi_S_FALSE;
-            } else {
-
-                err = Drm_Reader_Unbind(m_poAppContext, m_oDecryptContext);
-                if (DRM_FAILED(err))
-                {
-                    fprintf(stderr, "Error Drm_Reader_Unbind: 0x%08lx when creating temporary DRM_DECRYPT_CONTEXT\n",
-                                    static_cast<unsigned long>(err));
-                    result = CDMi_S_FALSE;
-                }
-            }
-        } else {
-            fprintf(stderr, "Error: secure stop ID is not valid\n");
-            result = CDMi_S_FALSE;
-        }
+    if (m_oDecryptContext != nullptr) {
+        fprintf(stderr, "Closing active decrypt context");
+        Drm_Reader_Close(m_oDecryptContext);
+        delete m_oDecryptContext;
+        m_oDecryptContext = nullptr;
     }
-    if (m_poAppContext)
-    {
-        err = Drm_Reader_Commit(m_poAppContext, nullptr, nullptr);
-        if (DRM_FAILED(err))
-        {
-            // nothing that we can do about. Just log
-            fprintf(stderr, "Error Drm_Reader_Commit 0x%08lx\n", static_cast<unsigned long>(err));
-        }
-    }
-
-    delete m_oDecryptContext;
-    m_oDecryptContext = nullptr;
-    m_fCommit = FALSE;
-    m_decryptInited = false;
-#endif
-    return CDMi_SUCCESS;
+    
+    return result;
 }
 
 }

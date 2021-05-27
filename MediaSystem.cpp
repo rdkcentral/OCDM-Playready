@@ -15,39 +15,72 @@
  * limitations under the License.
  */
 
-#include <plugins/plugins.h>
-//#include <cdmi.h>
-#include <interfaces/IDRM.h>
 #include <memory>
 #include <vector>
 #include <iostream>
 #include <string.h>
 
+#include "MediaSession.h"
+#include <cryptalgo/cryptalgo.h>
+#include <interfaces/IDRM.h>
+#include <plugins/plugins.h>
+
 // <plugins/plugins.h> has its own TRACING mechanism. We do not want to use those, undefine it here to avoid a warning.
 // with the TRACE macro of the PLAYREADY software.
 #undef TRACE
-
-#include "MediaSession.h"
 
 using namespace std;
 using namespace WPEFramework;
 using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
 
-extern DRM_CONST_STRING g_dstrDrmPath;
+// Each challenge saves a nonce to the PlayReady3 nonce store, and each license
+// bind removes a nonce. The nonce store is also a FIFO, with the oldest nonce
+// rolling off if the store is full when a new challenge is generated. This can
+// be a problem if the client generates but does not process a number of licenses
+// greater than the nonce fifo. So NONCE_STORE_SIZE is reported to the client
+// via the getLdlSessionLimit() API.
+const uint32_t NONCE_STORE_SIZE = 100;
+
+
 
 Core::CriticalSection drmAppContextMutex_;
 
 static DRM_WCHAR* createDrmWchar(std::string const& s) {
     DRM_WCHAR* w = new DRM_WCHAR[s.length() + 1];
     for (size_t i = 0; i < s.length(); ++i)
-#ifdef PR_3_3
         w[i] = DRM_ONE_WCHAR(s[i], '\0');
     w[s.length()] = DRM_ONE_WCHAR('\0', '\0');
-#else
-        w[i] = ONE_WCHAR(s[i], '\0');
-    w[s.length()] = ONE_WCHAR('\0', '\0');
-#endif
     return w;
+}
+
+bool calcFileSha256 (const std::string& filePath, uint8_t hash[], uint32_t hashLength )
+{
+    bool result(false); 
+
+    ASSERT(filePath.empty() == false);
+
+    Core::DataElementFile dataBuffer(filePath, Core::File::USER_READ);
+
+    if ( dataBuffer.IsValid() == false ) {
+        fprintf(stderr,"Failed to open %s", filePath.c_str());
+    } else {
+        WPEFramework::Crypto::SHA256 calculator; 
+        ASSERT(hashLength == calculator.Length);
+        
+        if (hashLength == calculator.Length) {
+            calculator.Input(dataBuffer.Buffer(), dataBuffer.Size());
+
+            const uint8_t* fileHash = calculator.Result();
+            
+            ::memcpy(hash, fileHash, calculator.Length);
+
+            result = true;
+        } else {
+            fprintf(stderr,"Output hash buffer has a incorrect size(%d), need %d bytes", hashLength, calculator.Length);
+        }
+    }
+
+    return result;
 }
 
 static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
@@ -71,14 +104,42 @@ private:
     PlayReady (const PlayReady&) = delete;
     PlayReady& operator= (const PlayReady&) = delete;
 
+    class Config : public Core::JSON::Container {
+    public:
+        Config(const Config&) = delete;
+        Config& operator=(const Config&) = delete;
+        Config()
+            : Core::JSON::Container()
+            , MeteringCertificate()
+            , CertificateLabel()
+        {
+            Add(_T("metering"), &MeteringCertificate);
+            Add(_T("certificatelabel"), &CertificateLabel);
+        }
+        ~Config()
+        {
+        }
+
+    public:
+        Core::JSON::String MeteringCertificate;
+        Core::JSON::String CertificateLabel;
+    };
+
 public:
     PlayReady() :
-       m_poAppContext(nullptr) {
+       m_poAppContext(nullptr)
+       , m_meteringCertificate(nullptr)
+       , m_meteringCertificateSize(0) {
     }
 
     ~PlayReady(void) {
         if (m_poAppContext)
             Drm_Uninitialize(m_poAppContext.get());
+
+        if (m_meteringCertificate != nullptr) {
+            delete [] m_meteringCertificate;
+            m_meteringCertificate = nullptr;
+        }
     }
 
     CDMi_RESULT CreateMediaKeySession(
@@ -123,23 +184,16 @@ public:
     ////////////////////
     uint64_t GetDrmSystemTime() const override
     {
-       fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
+        fprintf(stderr, "%s:%d: PR is asked for system time\n", __FILE__, __LINE__);
 
-       SafeCriticalSection lock(drmAppContextMutex_);
-
-#ifdef NETFLIX
-       DRM_UINT64 utctime64;
-       DRM_RESULT err = Drm_Clock_GetSystemTime(m_poAppContext.get(), &utctime64);
-       if (err != DRM_SUCCESS) {
-           fprintf(stderr, "Error: Drm_Clock_GetSystemTime returned 0x%lX\n", (long)err);
-           // return invalid time
-           return static_cast<uint64_t>(-1);
-       } else {
-           return static_cast<uint64_t>(utctime64);
-       }
-#endif
-
-       return 0;
+        // Playready version > 3 supports client time completely within the opaque blobs sent
+        // between the Playready client and server, so this function should really
+        // not have to return a real time. However, the Netflix server still needs
+        // a good client time for legacy reasons.
+        // In this reference DPI we are cheating my just returning the linux system
+        // time. A real implementation would be more complicated, perhaps getting
+        // time from some sort of secure and/or anti-rollback resource.
+        return static_cast<uint64_t>(time(NULL));
 
     }
 
@@ -159,83 +213,61 @@ public:
 
     uint32_t GetLdlSessionLimit() const override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-
-        ASSERT(m_poAppContext.get() != nullptr);
-
-        uint32_t ldlLimit = 0;
-#ifdef NETFLIX
-        DRM_RESULT err = Drm_LicenseAcq_GetLdlSessionsLimit_Netflix(m_poAppContext.get(), &ldlLimit);
-        if (err != DRM_SUCCESS) {
-            fprintf(stderr, "Error: Drm_LicenseAcq_GetLdlSessionsLimit_Netflix returned 0x%lX\n", (long)err);
-            return 0;
-        }
-#endif
-
-        return ldlLimit;
+        return NONCE_STORE_SIZE;
     }
 
     bool IsSecureStopEnabled() override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-#ifdef NETFLIX
-        return static_cast<bool>(Drm_SupportSecureStop());
-#else
-        return false;
-#endif
+        // method not used for Playready version > 3
+        return true;
     }
 
     CDMi_RESULT EnableSecureStop(bool enable) override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-#ifdef NETFLIX
-        Drm_TurnSecureStop(static_cast<int>(enable));
-#endif
-
+        // method not used for Playready version > 3
         return CDMi_SUCCESS;
     }
 
     uint32_t ResetSecureStops() override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-        // if secure stop is not supported, return
-        DRM_WORD numDeleted = 0;
-#ifdef NETFLIX
-        DRM_BOOL supported = Drm_SupportSecureStop();
-        if (supported == FALSE)
-            return 0;
-
-        DRM_RESULT err = Drm_ResetSecureStops(m_poAppContext.get(), &numDeleted);
-        if (err != DRM_SUCCESS) {
-            fprintf(stderr, "Drm_ResetSecureStops returned 0x%lx\n", (long)err);
-        }
-#endif
-        return numDeleted;
+        // method not used for Playready version > 3
+        return 0;
     }
 
-    CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint16_t, uint32_t & count)
+
+   CDMi_RESULT GetSecureStopIds(uint8_t ids[], uint16_t, uint32_t & count)
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+        CDMi_RESULT cr = CDMi_SUCCESS;
 
-#ifdef NETFLIX
-        // if secure stop is not supported, return NotAllowed
-        DRM_BOOL supported = Drm_SupportSecureStop();
-        if (supported == FALSE)
-            return CDMi_SUCCESS;
+        DRM_ID *ssSessionIds = nullptr;
 
-        DRM_BYTE sessionIds[TEE_MAX_NUM_SECURE_STOPS][TEE_SESSION_ID_LEN];
-        DRM_RESULT err = Drm_GetSecureStopIds(m_poAppContext.get(), sessionIds, &count);
-        if (err != DRM_SUCCESS) {
-            fprintf(stderr,"Drm_GetSecureStopIds returned 0x%lx\n", (long)err);
-            return CDMi_S_FALSE;
+        DRM_RESULT dr;
+        dr = Drm_SecureStop_EnumerateSessions(
+                m_poAppContext.get(),
+                m_meteringCertificateSize, //playready3MeteringCertSize,
+                m_meteringCertificate,     //playready3MeteringCert,
+                &count,
+                &ssSessionIds);
+
+        if (dr != DRM_SUCCESS && dr != DRM_E_NOMORE) {
+            fprintf(stderr, "Error in Drm_SecureStop_EnumerateSessions (error: 0x%08X)", static_cast<unsigned int>(dr));
+            cr = CDMi_S_FALSE;
+        } else {
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                ASSERT(sizeof(ssSessionIds[i].rgb) == DRM_ID_SIZE);
+                memcpy(&ids[i * DRM_ID_SIZE], ssSessionIds[i].rgb, DRM_ID_SIZE);
+            }
+
+            if (count) {
+                fprintf(stderr, "Found %d pending secure stop%s", count, (count > 1) ? "s" : "");
+            }
         }
 
-        for (int i = 0; i < count; ++i) {
-            memcpy(&ids[i * TEE_SESSION_ID_LEN], sessionIds[i], TEE_SESSION_ID_LEN);
-        }
-#endif
+        SAFE_OEM_FREE(ssSessionIds);
 
-        return CDMi_SUCCESS;
+        return cr;
     }
 
     CDMi_RESULT GetSecureStop(
@@ -245,45 +277,36 @@ public:
             uint16_t & rawSize)
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+        CDMi_RESULT cr = CDMi_SUCCESS;
 
-#ifdef NETFLIX
-        // if secure stop is not supported, return
-        DRM_BOOL supported = Drm_SupportSecureStop();
-        if (supported == FALSE)
-            return CDMi_SUCCESS;
+        // Get the secure stop challenge
+        DRM_ID ssSessionDrmId;
+        ASSERT(sizeof(ssSessionDrmId.rgb) >= sessionIDLength);
+        memcpy(ssSessionDrmId.rgb, sessionID, sessionIDLength);
 
-        if (!sessionIDLength) {
-            fprintf(stderr, "Drm_GetSecureStop sessionID length %zu", sessionIDLength);
-            return CDMi_S_FALSE;
-        }
+        DRM_DWORD ssChallengeSize;
+        DRM_BYTE *ssChallenge;
 
-        // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
-        uint8_t uuid[TEE_SESSION_ID_LEN];
-        memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
+        DRM_RESULT dr = Drm_SecureStop_GenerateChallenge(
+                m_poAppContext.get(),
+                &ssSessionDrmId,
+                m_meteringCertificateSize, //playready3MeteringCertSize,
+                m_meteringCertificate,     //playready3MeteringCert,
+                0, nullptr, // no custom data
+                &ssChallengeSize,
+                &ssChallenge);
 
-        const uint16_t maxRawSize = rawSize;
-
-        DRM_BYTE* passedRawData;
-
-        if ((rawData == nullptr) && (rawSize == 0)) {
-            // PlayReady checks against NULL pointer even if size is 0
-            uint8_t tmpBuffer;
-            rawSize = sizeof(tmpBuffer);
-            passedRawData = static_cast<DRM_BYTE*>(&tmpBuffer);
+        if (dr != DRM_SUCCESS) {
+            fprintf(stderr, "Error in Drm_SecureStop_GenerateChallenge (error: 0x%08X)", static_cast<unsigned int>(dr));
+            cr = CDMi_S_FALSE;
         } else {
-            passedRawData = static_cast<DRM_BYTE*>(rawData);
-        }
-
-        DRM_RESULT err = Drm_GetSecureStop(m_poAppContext.get(), uuid, passedRawData, &rawSize);
-        if (DRM_FAILED(err)) {
-            if ((err != DRM_E_BUFFERTOOSMALL) || (maxRawSize != 0)) {
-                fprintf(stderr, "Drm_GetSecureStop returned 0x%lx\n", (long)err);
+            if((rawData != nullptr) && (rawSize >= ssChallengeSize)){
+                memcpy(rawData, ssChallenge, ssChallengeSize);
             }
-            return CDMi_S_FALSE;
+            rawSize = ssChallengeSize;
         }
-#endif
 
-        return CDMi_SUCCESS;
+        return cr;
     }
 
     CDMi_RESULT CommitSecureStop(
@@ -293,47 +316,56 @@ public:
             uint32_t serverResponseLength) override
     {
         SafeCriticalSection lock(drmAppContextMutex_);
+        CDMi_RESULT cr = CDMi_SUCCESS;
 
-#ifdef NETFLIX
-        // if secure stop is not supported, return
-        DRM_BOOL supported = Drm_SupportSecureStop();
-        if (supported == FALSE)
-            return CDMi_SUCCESS;
-
-        if(!sessionIDLength) {
-            fprintf(stderr, "Warning: sessionIDLength is zero.\n");
-            return CDMi_INVALID_ARG;
+        if (sessionIDLength == 0) {
+            fprintf(stderr, "Error: empty session id");
+            cr = CDMi_S_FALSE;
+        }
+        if (serverResponseLength  == 0) {
+            cr = CDMi_S_FALSE;
         }
 
+        if (cr == CDMi_SUCCESS){
+            DRM_ID sessionDrmId;
+            ASSERT(sizeof(sessionDrmId.rgb) >= sessionIDLength);
+            memcpy(sessionDrmId.rgb, sessionID, sessionIDLength);
 
-        // convert our vector to the uuid, sessionID is only supposed to be 16 bytes long
-        uint8_t uuid[TEE_SESSION_ID_LEN];
-        memcpy(&uuid[0], &sessionID[0], TEE_SESSION_ID_LEN);
+            DRM_DWORD customDataSizeBytes = 0;
+            DRM_CHAR *pCustomData = NULL;
 
-        // commit it
-        DRM_RESULT err = Drm_CommitSecureStop(m_poAppContext.get(), uuid);
-        if (err != DRM_SUCCESS)
-        {
-            fprintf(stderr, "Drm_CommitSecureStop returned 0x%lx\n", (long)err);
+            DRM_RESULT dr;
+            dr = Drm_SecureStop_ProcessResponse(
+                m_poAppContext.get(),
+                &sessionDrmId,
+                m_meteringCertificateSize, //playready3MeteringCertSize,
+                m_meteringCertificate,     //playready3MeteringCert,
+                serverResponseLength,
+                serverResponse,
+                &customDataSizeBytes,
+                &pCustomData);
+            if (dr == DRM_SUCCESS) {
+                fprintf(stderr, "secure stop commit successful");
+                if (pCustomData && customDataSizeBytes)
+                {
+                    // We currently don't use custom data from the server. Just log here.
+                    std::string customDataStr(pCustomData, customDataSizeBytes);
+                    fprintf(stderr, "custom data = \"%s\"", customDataStr.c_str());
+                }
+            }
+            else {
+                fprintf(stderr, "Drm_SecureStop_ProcessResponse returned 0x%lx", static_cast<unsigned long>(dr));
+            }
+
+            SAFE_OEM_FREE(pCustomData);
         }
-#endif
 
-        return CDMi_SUCCESS;
+        return cr;
     }
 
     CDMi_RESULT DeleteKeyStore() override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
-
-#ifdef NETFLIX
-        DRM_RESULT err = Drm_DeleteKeyStore();
-        if (err != DRM_SUCCESS)
-        {
-            fprintf(stderr, "Error: Drm_DeleteKeyStore returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
-        }
-#endif
-
+        // There is no keyfile in PlayReady version > 3, so we cannot implement this function.
         return CDMi_SUCCESS;
     }
 
@@ -341,14 +373,9 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
-#ifdef NETFLIX
-        DRM_RESULT err = Drm_DeleteSecureStore(&drmStore_);
-        if (err != DRM_SUCCESS)
-        {
-            fprintf(stderr, "Error: Drm_DeleteSecureStore returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
+        if (remove(m_storeLocation.c_str()) != 0) {
+            fprintf(stderr, "Error removing DRM store file");
         }
-#endif
 
         return CDMi_SUCCESS;
     }
@@ -357,23 +384,8 @@ public:
             uint8_t keyStoreHash[],
             uint32_t keyStoreHashLength) override
     {
-        SafeCriticalSection lock(drmAppContextMutex_);
 
-#ifdef NETFLIX
-        if (keyStoreHashLength < 256)
-        {
-            fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
-            return CDMi_S_FALSE;
-        }
-
-        DRM_RESULT err = Drm_GetKeyStoreHash(keyStoreHash);
-        if (err != DRM_SUCCESS)
-        {
-            fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
-        }
-#endif
-
+        // There is no keyfile in PlayReady version > 3, so we cannot implement this function.
         return CDMi_SUCCESS;
     }
 
@@ -383,30 +395,40 @@ public:
     {
         SafeCriticalSection lock(drmAppContextMutex_);
 
-#ifdef NETFLIX
-        if (secureStoreHashLength < 256)
+        if (calcFileSha256(m_storeLocation, secureStoreHash, secureStoreHashLength) == false)
         {
-            fprintf(stderr, "Error: opencdm_get_secure_store_hash needs an array of size 256\n");
+            fprintf(stderr, "Error: calcFileSha256 failed");
             return CDMi_S_FALSE;
         }
-
-        DRM_RESULT err = Drm_GetSecureStoreHash(&drmStore_, secureStoreHash);
-        if (err != DRM_SUCCESS)
-        {
-            fprintf(stderr, "Error: Drm_GetSecureStoreHash returned 0x%lX\n", (long)err);
-            return CDMi_S_FALSE;
-        }
-#endif
-
         return CDMi_SUCCESS;
     }
 
-    void Initialize(const WPEFramework::PluginHost::IShell * shell, const std::string& /* configline */)
+    void Initialize(const WPEFramework::PluginHost::IShell * shell, const std::string&  configline)
     {
         string persistentPath = shell->PersistentPath();
         string statePath = persistentPath + "/state"; // To store rollback clock state etc
         m_readDir = persistentPath + "/playready";
         m_storeLocation = persistentPath + "/playready/storage/drmstore";
+       
+        Config config;
+        config.FromString(configline);
+
+        if (config.MeteringCertificate.IsSet() == true) {
+            Core::DataElementFile dataBuffer(config.MeteringCertificate.Value(), Core::File::USER_READ | Core::File::GROUP_READ);
+
+            if(dataBuffer.IsValid() == false) {
+                TRACE_L1(_T("Failed to open %s"), config.MeteringCertificate.Value().c_str());
+            } else {
+                m_meteringCertificateSize = dataBuffer.Size();
+                m_meteringCertificate     = new DRM_BYTE[m_meteringCertificateSize];
+
+                ::memcpy(m_meteringCertificate, dataBuffer.Buffer(), dataBuffer.Size());
+            }
+        }
+
+        if ((config.CertificateLabel.IsSet() == true) && (config.CertificateLabel.Value().empty() == false)) {
+            Core::SystemInfo::SetEnvironment(_T("PLAYREADY_CERTIFICATE_LABEL"), config.CertificateLabel.Value());
+        }
 
         Core::Directory stateDir(statePath.c_str());
         stateDir.Create();
@@ -444,11 +466,7 @@ public:
         DRM_RESULT err;
 
         // DRM Platform Initialization
-#ifdef PR_3_3
         err = Drm_Platform_Initialize(nullptr);
-#else
-        err = Drm_Platform_Initialize();
-#endif
         if(DRM_FAILED(err))
         {
             fprintf(stderr, "Error in Drm_Platform_Initialize: 0x%08lX\n", err);
@@ -492,6 +510,9 @@ private:
 
     string m_readDir;
     string m_storeLocation;
+
+    DRM_BYTE* m_meteringCertificate;
+    uint32_t m_meteringCertificateSize;
 };
 
 static SystemFactoryType<PlayReady> g_instance({"video/x-h264", "audio/mpeg"});

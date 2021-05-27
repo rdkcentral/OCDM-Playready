@@ -24,7 +24,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(MODULE_NAME Playready)
 
-option(NETFLIX_EXTENSION "Enable DRM with Netflix extension" ON)
 
 find_package(${NAMESPACE}Core REQUIRED)
 find_package(PlayReady REQUIRED)
@@ -38,10 +37,11 @@ set_target_properties(${MODULE_NAME} PROPERTIES
         CXX_STANDARD 11
         CXX_STANDARD_REQUIRED YES)
 
-if (NETFLIX_EXTENSION)
-include("${PLAYREADY_INCLUDE}/playready.cmake")
-target_compile_definitions(${MODULE_NAME} PRIVATE NETFLIX=ON)
-endif()
+target_compile_definitions(${MODULE_NAME} 
+    PRIVATE 
+        BSTD_CPU_ENDIAN=BSTD_ENDIAN_LITTLE
+        DRM_BUILD_PROFILE=900
+)
 
 target_include_directories(${MODULE_NAME}
     PRIVATE
@@ -49,16 +49,9 @@ target_include_directories(${MODULE_NAME}
     "${CMAKE_SYSROOT}/usr/include/${NAMESPACE}"
     ${PLAYREADY_INCLUDE_DIRS})
 
-if (NETFLIX_EXTENSION)
-target_link_libraries(${MODULE_NAME}
-    PRIVATE
-        ${NAMESPACE}Core::${NAMESPACE}Core
-        PlayReady::PlayReady)
-else()
 target_link_libraries(${MODULE_NAME}
     ${NAMESPACE}Core::${NAMESPACE}Core
     ${PLAYREADY_LIBRARIES})
-endif()
 
 # Library installation section
 set_target_properties(${MODULE_NAME} PROPERTIES SUFFIX ".drm")
