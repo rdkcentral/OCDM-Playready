@@ -15,19 +15,18 @@
  * limitations under the License.
  */
 
-#include <plugins/plugins.h>
-//#include <cdmi.h>
-#include <interfaces/IDRM.h>
 #include <memory>
 #include <vector>
 #include <iostream>
 #include <string.h>
 
+#include "MediaSession.h"
+#include <interfaces/IDRM.h>
+#include <plugins/plugins.h>
+
 // <plugins/plugins.h> has its own TRACING mechanism. We do not want to use those, undefine it here to avoid a warning.
 // with the TRACE macro of the PLAYREADY software.
 #undef TRACE
-
-#include "MediaSession.h"
 
 using namespace std;
 using namespace WPEFramework;
