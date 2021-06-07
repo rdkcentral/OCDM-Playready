@@ -17,6 +17,8 @@
 
 #pragma once
 
+#define MODULE_NAME OCDM_Playready
+
 #include <drmbuild_oem.h>
 #include <drmmanager.h>
 #include <drmmathsafe.h>

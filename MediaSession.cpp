@@ -47,6 +47,8 @@ extern Core::CriticalSection drmAppContextMutex_;
 #define NO_OF DRM_NO_OF
 #endif
 
+MODULE_NAME_DECLARATION(BUILD_REFERENCE);
+
 using namespace std;
 
 namespace CDMi {
