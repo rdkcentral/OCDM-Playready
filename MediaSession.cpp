@@ -600,9 +600,16 @@ CDMi_RESULT MediaKeySession::ReleaseClearContent(
     uint32_t f_cbSessionKey,
     const uint32_t  f_cbClearContentOpaque,
     uint8_t  *f_pbClearContentOpaque ) {
-
-  return CDMi_SUCCESS;
-
+    
+    CDMi_RESULT res = CDMi_S_FALSE;
+    if( f_pbClearContentOpaque != NULL && f_cbClearContentOpaque > 0 && m_oDecryptContext){
+        ChkVOID( DRM_Reader_FreeOpaqueDecryptedContent( m_oDecryptContext, f_cbClearContentOpaque, f_pbClearContentOpaque ) );
+	res = CDMi_SUCCESS;
+    }
+    else{
+        fprintf(stderr,"ReleaseClearContent: Failed to free the Clear Content buffer\n");
+    }
+    return res;
 }
 
 void MediaKeySession::CleanLicenseStore(DRM_APP_CONTEXT *pDrmAppCtx){
