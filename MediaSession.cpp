@@ -499,8 +499,8 @@ CDMi_RESULT MediaKeySession::Close(void) {
 CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t *f_pbSessionKey,
     uint32_t f_cbSessionKey,
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
+    const EncryptionScheme encryptionScheme,
+    const EncryptionPattern& pattern,
     const uint8_t *f_pbIV,
     uint32_t f_cbIV,
     uint8_t *payloadData,
@@ -511,6 +511,9 @@ CDMi_RESULT MediaKeySession::Decrypt(
     const uint8_t*, // keyId
     bool initWithLast15)
 {
+    uint32_t *f_pdwSubSampleMapping;
+    uint32_t f_cdwSubSampleMapping;
+
     SafeCriticalSection systemLock(drmAppContextMutex_);
     assert(f_cbIV > 0);
     if(payloadDataSize == 0){
@@ -555,13 +558,10 @@ CDMi_RESULT MediaKeySession::Decrypt(
        MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
     }
 
-    if ( NULL == f_pdwSubSampleMapping )
-    {
-        rgdwMappings[0] = 0;
-        rgdwMappings[1] = payloadDataSize;
-        f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-        f_cdwSubSampleMapping = NO_OF(rgdwMappings);
-    }
+    rgdwMappings[0] = 0;
+    rgdwMappings[1] = payloadDataSize;
+    f_pdwSubSampleMapping = reinterpret_cast<uint32_t*>(rgdwMappings);
+    f_cdwSubSampleMapping = NO_OF(rgdwMappings);
 
     err = Drm_Reader_DecryptOpaque(
         m_oDecryptContext,
