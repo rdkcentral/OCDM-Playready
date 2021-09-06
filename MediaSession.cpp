@@ -579,6 +579,12 @@ CDMi_RESULT MediaKeySession::Decrypt(
         return CDMi_S_FALSE;
     }
 
+    if ( (*f_ppbOpaqueClearContent != nullptr) && (*f_pcbOpaqueClearContent > 0) && (*f_pcbOpaqueClearContent <= payloadDataSize) ) {
+        ::memcpy(payloadData, *f_ppbOpaqueClearContent, *f_pcbOpaqueClearContent);
+        ChkVOID( DRM_Reader_FreeOpaqueDecryptedContent( m_oDecryptContext, *f_pcbOpaqueClearContent, *f_ppbOpaqueClearContent) );
+        *f_ppbOpaqueClearContent = payloadData;
+    }
+ 
     // Call commit during the decryption of the first sample.
     if (!m_fCommit) {
         //err = Drm_Reader_Commit(m_poAppContext, &opencdm_output_levels_callback, &levels_);
