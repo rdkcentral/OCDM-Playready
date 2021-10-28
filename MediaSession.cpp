@@ -546,16 +546,16 @@ CDMi_RESULT MediaKeySession::Decrypt(
        memcpy(&ctrContext, f_pbIV, sizeof(ctrContext));
     } else {
        // Regular case
-       // FIXME: IV bytes need to be swapped ???
-       // TODO: is this for-loop the same as "NETWORKBYTES_TO_QWORD"?
-       unsigned char * ivDataNonConst = const_cast<unsigned char *>(f_pbIV); // TODO: this is ugly
-       for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-          unsigned char temp = ivDataNonConst[i];
-          ivDataNonConst[i] = ivDataNonConst[f_cbIV - i - 1];
-          ivDataNonConst[f_cbIV - i - 1] = temp;
+       std::vector<uint8_t> iv(f_cbIV, 0);
+       for (uint8_t i = 0; i < f_cbIV; i++) {
+#if defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+           iv[(f_cbIV - 1) - i] = f_pbIV[i];
+#else
+           iv[i] = f_pbIV[i];
+#endif
        }
 
-       MEMCPY(&ctrContext.qwInitializationVector, f_pbIV, f_cbIV);
+       MEMCPY(&ctrContext.qwInitializationVector, iv.data(), iv.size());
     }
 
     rgdwMappings[0] = 0;
@@ -610,7 +610,7 @@ CDMi_RESULT MediaKeySession::ReleaseClearContent(
     CDMi_RESULT res = CDMi_S_FALSE;
     if( f_pbClearContentOpaque != NULL && f_cbClearContentOpaque > 0 && m_oDecryptContext){
         ChkVOID( DRM_Reader_FreeOpaqueDecryptedContent( m_oDecryptContext, f_cbClearContentOpaque, f_pbClearContentOpaque ) );
-	res = CDMi_SUCCESS;
+        res = CDMi_SUCCESS;
     }
     else{
         fprintf(stderr,"ReleaseClearContent: Failed to free the Clear Content buffer\n");
