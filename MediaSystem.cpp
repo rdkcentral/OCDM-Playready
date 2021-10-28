@@ -144,8 +144,8 @@ public:
 
     CDMi_RESULT CreateMediaKeySession(
         const std::string & keySystem,
-        int32_t licenseType,
-        const char *f_pwszInitDataType,
+        VARIABLE_IS_NOT_USED int32_t licenseType,
+        VARIABLE_IS_NOT_USED const char *f_pwszInitDataType,
         const uint8_t *f_pbInitData,
         uint32_t f_cbInitData, 
         const uint8_t *f_pbCDMData,
@@ -164,8 +164,8 @@ public:
     }
 
     CDMi_RESULT SetServerCertificate(
-        const uint8_t *f_pbServerCertificate,
-        uint32_t f_cbServerCertificate) {
+        VARIABLE_IS_NOT_USED const uint8_t *f_pbServerCertificate,
+        VARIABLE_IS_NOT_USED uint32_t f_cbServerCertificate) {
 
         return CDMi_S_FALSE;
     }
@@ -222,7 +222,7 @@ public:
         return true;
     }
 
-    CDMi_RESULT EnableSecureStop(bool enable) override
+    CDMi_RESULT EnableSecureStop(VARIABLE_IS_NOT_USED bool enable) override
     {
         // method not used for Playready version > 3
         return CDMi_SUCCESS;
@@ -381,8 +381,8 @@ public:
     }
 
     CDMi_RESULT GetKeyStoreHash(
-            uint8_t keyStoreHash[],
-            uint32_t keyStoreHashLength) override
+            VARIABLE_IS_NOT_USED uint8_t keyStoreHash[],
+            VARIABLE_IS_NOT_USED uint32_t keyStoreHashLength) override
     {
 
         // There is no keyfile in PlayReady version > 3, so we cannot implement this function.

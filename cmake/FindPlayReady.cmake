@@ -22,8 +22,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+if(PlayReady_FIND_QUIETLY)
+    set(_PLAYREADY_MODE QUIET)
+elseif(PlayReady_FIND_REQUIRED)
+    set(_PLAYREADY_MODE REQUIRED)
+endif()
+
 find_package(PkgConfig)
-pkg_check_modules(PC_PLAYREADY REQUIRED playready)
+pkg_check_modules(PC_PLAYREADY ${_PLAYREADY_MODE} playready)
 
 if(PC_PLAYREADY_FOUND)
     if(PLAYREADY_FIND_VERSION AND PC_PLAYREADY_VERSION)
@@ -44,8 +50,8 @@ if(PC_PLAYREADY_FOUND)
 endif()
 
 include(FindPackageHandleStandardArgs)
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(PLAYREADY DEFAULT_MSG PLAYREADY_INCLUDE_DIRS PLAYREADY_LIBRARIES)
-
+find_package_handle_standard_args(PlayReady DEFAULT_MSG PC_PLAYREADY_FOUND PLAYREADY_INCLUDE_DIRS PLAYREADY_LIBRARIES)
+set(PLAYREADY_FOUND ${PlayReady_FOUND})
 mark_as_advanced(
     PLAYREADY_FOUND
     PLAYREADY_INCLUDE_DIRS

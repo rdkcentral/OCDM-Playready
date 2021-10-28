@@ -294,11 +294,11 @@ const char *MediaKeySession::GetKeySystem(void) const {
 }
 
 DRM_RESULT DRM_CALL MediaKeySession::_PolicyCallback(
-    const DRM_VOID *f_pvOutputLevelsData, 
-    DRM_POLICY_CALLBACK_TYPE f_dwCallbackType,
-    const DRM_KID *f_pKID,
-    const DRM_LID *f_pLID,
-    const DRM_VOID *f_pv) {
+    VARIABLE_IS_NOT_USED const DRM_VOID *f_pvOutputLevelsData,
+    VARIABLE_IS_NOT_USED DRM_POLICY_CALLBACK_TYPE f_dwCallbackType,
+    VARIABLE_IS_NOT_USED const DRM_KID *f_pKID,
+    VARIABLE_IS_NOT_USED const DRM_LID *f_pLID,
+    VARIABLE_IS_NOT_USED const DRM_VOID *f_pv) {
   return DRM_SUCCESS;
 }
 
@@ -497,10 +497,10 @@ CDMi_RESULT MediaKeySession::Close(void) {
 }
 
 CDMi_RESULT MediaKeySession::Decrypt(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const EncryptionScheme encryptionScheme,
-    const EncryptionPattern& pattern,
+    VARIABLE_IS_NOT_USED const uint8_t *f_pbSessionKey,
+    VARIABLE_IS_NOT_USED uint32_t f_cbSessionKey,
+    VARIABLE_IS_NOT_USED const EncryptionScheme encryptionScheme,
+    VARIABLE_IS_NOT_USED const EncryptionPattern& pattern,
     const uint8_t *f_pbIV,
     uint32_t f_cbIV,
     uint8_t *payloadData,
@@ -602,8 +602,8 @@ CDMi_RESULT MediaKeySession::Decrypt(
 }
 
 CDMi_RESULT MediaKeySession::ReleaseClearContent(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
+    VARIABLE_IS_NOT_USED const uint8_t *f_pbSessionKey,
+    VARIABLE_IS_NOT_USED uint32_t f_cbSessionKey,
     const uint32_t  f_cbClearContentOpaque,
     uint8_t  *f_pbClearContentOpaque ) {
     
