@@ -399,7 +399,9 @@ CDMi_RESULT MediaKeySession::Load(void) {
 void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_cbKeyMessageResponse) {
 
   DRM_RESULT dr = DRM_SUCCESS;
+PUSH_WARNING(DISABLE_WARNING_MISSING_FIELD_INITIALIZERS)
   DRM_LICENSE_RESPONSE oLicenseResponse = {eUnknownProtocol, 0};
+POP_WARNING()
 
   ChkArg(m_pbKeyMessageResponse && m_cbKeyMessageResponse > 0);
 
@@ -526,7 +528,10 @@ CDMi_RESULT MediaKeySession::Decrypt(
     }
     
     DRM_RESULT err = DRM_SUCCESS;
+PUSH_WARNING(DISABLE_WARNING_MISSING_FIELD_INITIALIZERS)
     DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
+POP_WARNING()
+
     DRM_DWORD rgdwMappings[2];
 
     if ( (f_pcbOpaqueClearContent == NULL) || (f_ppbOpaqueClearContent == NULL)
