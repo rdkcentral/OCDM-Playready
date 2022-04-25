@@ -172,7 +172,7 @@ public:
 
     CDMi_RESULT DestroyMediaKeySession(IMediaKeySession *f_piMediaKeySession) {
         SafeCriticalSection systemLock(drmAppContextMutex_);
-        MediaKeySession * mediaKeySession = dynamic_cast<MediaKeySession *>(f_piMediaKeySession);
+        VARIABLE_IS_NOT_USED MediaKeySession * mediaKeySession = dynamic_cast<MediaKeySession *>(f_piMediaKeySession);
         ASSERT((mediaKeySession != nullptr) && "Expected a locally allocated MediaKeySession");
 
         delete f_piMediaKeySession;
