@@ -155,9 +155,9 @@ public:
         bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
         if (isNetflixPlayready) {
            // TODO: why is the order different when dealing with netflix?
-           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbCDMData, f_cbCDMData, f_pbInitData, f_cbInitData, m_poAppContext.get(), !isNetflixPlayready);
+           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbCDMData, f_cbCDMData, f_pbInitData, f_cbInitData, m_poAppContext.get(), true, !isNetflixPlayready);
         } else {
-           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, m_poAppContext.get(), !isNetflixPlayready);
+           *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, m_poAppContext.get(), false, !isNetflixPlayready);
         }
  
         return CDMi_SUCCESS; 

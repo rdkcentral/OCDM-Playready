@@ -182,7 +182,7 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
   return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration /* = false */)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initWithLast15, bool initiateChallengeGeneration /* = false */)
     : m_pbOpaqueBuffer(nullptr)
     , m_cbOpaqueBuffer(0)
     , m_pbRevocationBuffer(nullptr)
@@ -193,6 +193,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
     , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
     , m_piCallback(nullptr)
     , mSessionId(0)
+    , mInitWithLast15(initWithLast15)
     , mInitiateChallengeGeneration(initiateChallengeGeneration) 
     , m_fCommit(false)
     , m_poAppContext(poAppContext)
@@ -511,7 +512,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
     uint8_t **f_ppbOpaqueClearContent,
     const uint8_t, // keyIdLength
     const uint8_t*, // keyId
-    bool initWithLast15)
+    bool ) //initWithLast15
 {
     uint32_t *f_pdwSubSampleMapping;
     uint32_t f_cdwSubSampleMapping;
@@ -546,7 +547,7 @@ POP_WARNING()
 
 
     // TODO: can be done in another way (now abusing "initWithLast15" variable)
-    if (initWithLast15) {
+    if (mInitWithLast15) {
         // Netflix case
        memcpy(&ctrContext, f_pbIV, sizeof(ctrContext));
     } else {

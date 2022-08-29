@@ -88,7 +88,7 @@ private:
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initiateChallengeGeneration = false);
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, DRM_APP_CONTEXT * poAppContext, bool initWithLast15, bool initiateChallengeGeneration = false);
     ~MediaKeySession();
 
     bool playreadyGenerateKeyRequest();
@@ -177,6 +177,7 @@ private:
     std::unique_ptr<LicenseResponse> mLicenseResponse;
     std::vector<uint8_t> mSecureStopId;
     PlayLevels levels_;
+    bool mInitWithLast15;
     bool mInitiateChallengeGeneration;
     DRM_ID mBatchId;
 
