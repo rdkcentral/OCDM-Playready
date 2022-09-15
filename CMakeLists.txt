@@ -57,7 +57,9 @@ target_link_libraries(${MODULE_NAME}
 set_target_properties(${MODULE_NAME} PROPERTIES SUFFIX ".drm")
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
 
-install(TARGETS ${MODULE_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${NAMESPACE}/OCDM)
+install(TARGETS ${MODULE_NAME}
+    PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${NAMESPACE}/OCDM)
 
 if(NOT "${CMAKE_FIND_ROOT_PATH}" STREQUAL "")
     install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink /etc/playready  ${CMAKE_CURRENT_BINARY_DIR}/playready)")
