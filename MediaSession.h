@@ -39,6 +39,8 @@
 #undef __in
 #undef __out
 
+#undef __reserved
+
 #include <string.h>
 #include <memory>
 #include <interfaces/IDRM.h>
