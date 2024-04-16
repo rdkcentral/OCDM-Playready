@@ -167,8 +167,8 @@ private:
     inline void PrintBase64(const int32_t length, const uint8_t* data, const char id[])
     {
         std::string base64, hex;
-        WPEFramework::Core::ToString(data, length, true, base64);
-        WPEFramework::Core::ToHexString(data, length, hex);
+        Thunder::Core::ToString(data, length, true, base64);
+        Thunder::Core::ToHexString(data, length, hex);
         fprintf(stderr, "%s: %s\t[%s]", id, base64.c_str(), hex.c_str());
     }
 

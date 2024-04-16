@@ -30,7 +30,7 @@
 #undef TRACE
 
 using namespace std;
-using namespace WPEFramework;
+using namespace Thunder;
 using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
 
 // Each challenge saves a nonce to the PlayReady3 nonce store, and each license
@@ -64,7 +64,7 @@ bool calcFileSha256 (const std::string& filePath, uint8_t hash[], uint32_t hashL
     if ( dataBuffer.IsValid() == false ) {
         fprintf(stderr,"Failed to open %s", filePath.c_str());
     } else {
-        WPEFramework::Crypto::SHA256 calculator; 
+        Thunder::Crypto::SHA256 calculator; 
         ASSERT(hashLength == calculator.Length);
         
         if (hashLength == calculator.Length) {
@@ -403,7 +403,7 @@ public:
         return CDMi_SUCCESS;
     }
 
-    void Initialize(const WPEFramework::PluginHost::IShell * shell, const std::string&  configline)
+    void Initialize(const Thunder::PluginHost::IShell * shell, const std::string&  configline)
     {
         string persistentPath = shell->PersistentPath();
         string statePath = persistentPath + "/state"; // To store rollback clock state etc
