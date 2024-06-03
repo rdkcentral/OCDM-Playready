@@ -25,7 +25,7 @@
 #include <sys/utsname.h>
 #include <core/core.h>
 
-using namespace WPEFramework;
+using namespace Thunder;
 using SafeCriticalSection = Core::SafeSyncType<Core::CriticalSection>;
 extern Core::CriticalSection drmAppContextMutex_;
 
