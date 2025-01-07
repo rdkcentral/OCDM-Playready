@@ -38,6 +38,10 @@
 #include <cdmi.h>
 #include <core/Sync.h>
 
+#ifdef USE_SVP
+#include "gst_svp_meta.h"
+#endif
+
 #ifndef SIZEOF
 #define SIZEOF sizeof
 #endif
@@ -63,6 +67,24 @@ typedef struct
     char pszGlobalDir[128];
     char pszApplicationDir[128];
 }DRM_INIT_CONTEXT;
+
+typedef struct SecureBufferInfo_struct
+{
+    uint32_t secureBufSize;
+    void *pSecBufHandle;
+    void *pPhysAddr;
+    void *pVirtualAddr;
+    uint32_t align;
+    int ion_fd;
+    int map_fd;
+    bool  bCreateSecureMemRegion;
+    bool  bReleaseSecureMemRegion;
+    void *pSecureMemRegion;
+    void *pAVSecBuffer;
+    void *pEncryptedDataBuffer;
+    uint32_t SecureMemRegionSize;
+    uint32_t patternClearBlocks;
+} SecureBufferInfo;
 
 #define PR4ChkDR(expr) do {                           \
             dr = ( expr );                            \
@@ -122,10 +144,12 @@ struct __DECRYPT_CONTEXT
 {
     KeyId keyId;
     DRM_DECRYPT_CONTEXT oDrmDecryptContext;
+    DRM_DECRYPT_CONTEXT oDrmDecryptAudioContext;
 
     __DECRYPT_CONTEXT()
     {
         memset( &oDrmDecryptContext, 0, sizeof( DRM_DECRYPT_CONTEXT ) );
+        memset( &oDrmDecryptAudioContext, 0, sizeof( DRM_DECRYPT_CONTEXT ) );
     }
 };
 
@@ -264,84 +288,6 @@ public:
         uint32_t*                outDataLength,
         const SampleInfo*        sampleInfo,
         const IStreamProperties* properties);
-#if 0
-    virtual CDMi_RESULT MediaKeySession::Decrypt(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const EncryptionScheme encryptionScheme,
-    const EncryptionPattern& pattern,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    uint8_t* payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15);
-#endif
-
-    virtual CDMi_RESULT MediaKeySession::DecryptAesCBC1(
-    SubSampleInfo* subSample,
-    uint8_t subSampleCount,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    uint8_t initWithLast15,
-    uint32_t cryptoBlocks,
-    uint32_t clearBlocks,
-    bool useSVP);
-
-#if 0
-    virtual CDMi_RESULT MediaKeySession::DecryptAesCBC(
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15,
-    uint32_t cryptoBlocks,
-    uint32_t clearBlocks);
-#endif
-
-    virtual CDMi_RESULT MediaKeySession::DecryptAesCTR1(
-    SubSampleInfo* subSample,
-    uint8_t subSampleCount,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    uint8_t initWithLast15,
-    bool useSVP);
-
-#if 0
-    virtual CDMi_RESULT MediaKeySession::DecryptAesCTR(
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15);
-#endif
 
     virtual CDMi_RESULT ReleaseClearContent(
     const uint8_t *f_pbSessionKey,
@@ -397,6 +343,7 @@ private:
     DRM_ID m_oBatchID;
     std::vector<std::pair<DRM_ID, DRM_ID>> m_oPersistentLicenses;
     DECRYPT_CONTEXT m_currentDecryptContext;
+    SecureBufferInfo m_stSecureBuffInfo = {0};
 #ifdef USE_SVP
     void* m_pSVPContext;
     unsigned int m_rpcID;
@@ -440,13 +387,13 @@ class CPRDrmPlatform
 {
 public:
     static DRM_RESULT DrmPlatformInitialize();
-    static DRM_RESULT DrmPlatformInitialize( DRM_INIT_CONTEXT * );
+    static DRM_RESULT DrmPlatformInitialize( void * );
     static DRM_RESULT DrmPlatformUninitialize();
 private:
     static DRM_DWORD m_dwInitRefCount;
     CPRDrmPlatform() { }
 };
 
-extern DRM_INIT_CONTEXT g_oDrmInitContext;
+//extern DRM_INIT_CONTEXT g_oDrmInitContext;
 
 } // namespace CDMi
