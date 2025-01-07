@@ -42,6 +42,7 @@
 using namespace std;
 
 extern DRM_CONST_STRING g_dstrDrmPath;
+DRM_CONST_STRING g_dstrCDMDrmStoreName;
 
 WPEFramework::Core::CriticalSection drmAppContextMutex_;
 
@@ -55,7 +56,6 @@ static DRM_WCHAR* createDrmWchar(std::string const& s) {
 
 static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
     DRM_DWORD ich = 0;
-
     if( f_pPackedString == nullptr
      || f_cch == 0 )
     {
@@ -65,6 +65,20 @@ static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
     {
         f_pPackedString[f_cch - ich] = ((DRM_BYTE*)f_pPackedString)[ f_cch - ich ];
     }
+}
+
+std::string GetDrmStorePath()
+{
+    const uint32_t MAXLEN = 256;
+    char pathStr[MAXLEN];
+    if (g_dstrCDMDrmStoreName.cchString >= MAXLEN)
+        return "";
+    DRM_UTL_DemoteUNICODEtoASCII(g_dstrCDMDrmStoreName.pwszString,
+            pathStr, MAXLEN);
+    ((DRM_BYTE*)pathStr)[g_dstrCDMDrmStoreName.cchString] = 0;
+    PackedCharsToNative(pathStr, g_dstrCDMDrmStoreName.cchString + 1);
+
+    return string(pathStr);
 }
 
 namespace CDMi {
@@ -134,7 +148,6 @@ public:
         uint32_t f_cbCDMData, 
         IMediaKeySession **f_ppiMediaKeySession) {
         bool isNetflixPlayready = (strstr(keySystem.c_str(), "netflix") != nullptr);
-
         if (isNetflixPlayready) {
             if(!m_isAppCtxInitialized)
             {
@@ -174,7 +187,6 @@ public:
     CDMi_RESULT SetServerCertificate( const uint8_t *f_pbServerCertificate, uint32_t f_cbServerCertificate)
     {
         CDMi_RESULT cr = CDMi_SUCCESS;
-
         if ( CDMi_FAILED( ( cr=SetSecureStopPublisherCert( f_pbServerCertificate, f_cbServerCertificate ) ) ) )
         {
             fprintf(stderr, "[%s:%d] SetSecureStopPublisherCert failed",__FUNCTION__,__LINE__);
@@ -189,7 +201,6 @@ public:
 
     CDMi_RESULT DestroyMediaKeySession(IMediaKeySession *f_piMediaKeySession) {
         MediaKeySession * mediaKeySession = dynamic_cast<MediaKeySession *>(f_piMediaKeySession);
-
         if ( mediaKeySession != nullptr )
         {
             delete f_piMediaKeySession;
@@ -455,11 +466,13 @@ public:
         g_dstrDrmPath.pwszString = drmdir_;
         g_dstrDrmPath.cchString = rdir.length();
 
+        // Store store location
         std::string store(m_storeLocation);
 
-        drmStore_.pwszString = createDrmWchar(store);
-        drmStore_.cchString = store.length();
+        g_dstrCDMDrmStoreName.pwszString = createDrmWchar(store);
+        g_dstrCDMDrmStoreName.cchString = store.length();
 
+        // Init revocation buffer.
         pbRevocationBuffer_ = new DRM_BYTE[REVOCATION_BUFFER_SIZE];
 
         return CDMi_SUCCESS;
@@ -469,6 +482,7 @@ public:
     CDMi_RESULT InitializeAppCtx()
     {
         DRM_BYTE *appOpaqueBuffer = nullptr;
+        DRM_VOID *pDrmOemContext = NULL;
 
         if (m_poAppContext.get() != nullptr) {
            m_poAppContext.reset();
@@ -476,31 +490,34 @@ public:
 
         m_poAppContext.reset(new DRM_APP_CONTEXT);
 
+        // Init opaque buffer.
         appOpaqueBuffer = new DRM_BYTE[MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE];
 
         ::memset(m_poAppContext.get(), 0, sizeof(DRM_APP_CONTEXT));
-        DRM_RESULT err  = Drm_Initialize(m_poAppContext.get(), nullptr,
+
+        svpGetDrmOEMContext(&pDrmOemContext);
+        DRM_RESULT err  = Drm_Initialize(m_poAppContext.get(), pDrmOemContext,
                               appOpaqueBuffer,
                               MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
-                              &drmStore_);
+                              &g_dstrCDMDrmStoreName);
 
-        if(err != DRM_SUCCESS) {
-            err = Drm_Initialize(m_poAppContext.get(), nullptr,
+        if((err == DRM_E_SECURESTOP_STORE_CORRUPT) || \
+                (err == DRM_E_SECURESTORE_CORRUPT) || \
+                (err == DRM_E_DST_CORRUPTED)) {
+
+            //if drmstore file is corrupted, remove it and init again, playready will create a new one
+            remove(GetDrmStorePath().c_str());
+
+            err = Drm_Initialize(m_poAppContext.get(), pDrmOemContext,
                                 appOpaqueBuffer,
                                 MINIMUM_APPCONTEXT_OPAQUE_BUFFER_SIZE,
-                                &drmStore_ );
-            if ( err != DRM_SUCCESS )
-            {
-                fprintf(stderr, "[%s:%d] Drm_Initialize failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
-                int status = remove ("/opt/drm/sample.hds");
-                if(status == 0)
-                    fprintf(stderr," sample.hds File removal successful");
-                else
-                    fprintf(stderr,"sample.hds File removal not successful");
-                m_poAppContext.reset();
-                delete [] appOpaqueBuffer;
-                return CDMi_S_FALSE;
-            }
+                                &g_dstrCDMDrmStoreName );
+        }
+
+        if (DRM_FAILED(err)) {
+            delete [] appOpaqueBuffer;
+            m_poAppContext.reset();
+            return CDMi_S_FALSE;
         }
 
         ::memset(pbRevocationBuffer_, 0, REVOCATION_BUFFER_SIZE);
@@ -510,6 +527,11 @@ public:
             delete [] appOpaqueBuffer;
             m_poAppContext.reset();
             fprintf(stderr, "[%s:%d] Drm_Revocation_SetBuffer failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+            return CDMi_S_FALSE;
+        }
+
+        if( !svpLoadRevocationList())
+        {
             return CDMi_S_FALSE;
         }
 
@@ -607,7 +629,7 @@ public:
         delete [] pbRevocationBuffer_;
 
         delete [] drmdir_;
-        delete [] drmStore_.pwszString;
+        delete [] g_dstrCDMDrmStoreName.pwszString;
 
         err = CPRDrmPlatform::DrmPlatformUninitialize();
         if(DRM_FAILED(err))
@@ -695,7 +717,10 @@ public:
         config.FromString(configline);
         m_readDir = config.ReadDir.Value();
         m_storeLocation = config.StoreLocation.Value();
-        m_storeLocation = "/opt/drm/sample.hds";
+
+        svpGetDrmStoragePath(m_readDir, m_storeLocation);
+
+        WPEFramework::Core::Directory(m_readDir.c_str()).CreatePath();
 
         string homePath = config.HomePath.Value();
         if(!homePath.empty()) {
@@ -711,12 +736,13 @@ public:
 
     void Initialize(const WPEFramework::PluginHost::IShell * service, const std::string& configline)
     {
+        /* We can do SoC specific requirement for Playready */
+        svpPlatformInitializePlayready();
         OnSystemConfigurationAvailable(configline);
     }
 
 private:
     DRM_WCHAR* drmdir_;
-    DRM_CONST_STRING drmStore_;
 
     DRM_BYTE *pbRevocationBuffer_ = nullptr;
     std::shared_ptr<DRM_APP_CONTEXT> m_poAppContext;

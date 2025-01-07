@@ -74,7 +74,6 @@ CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t dr
 
 CDMi_RESULT MediaKeySession::BindKeyNow(DECRYPT_CONTEXT decryptContext)
 {
-
       DRM_VOID * pvData = nullptr;
       DRMPFNPOLICYCALLBACK pfnOPLCallback = nullptr;
       DECRYPT_CONTEXT tmpDecryptContext;

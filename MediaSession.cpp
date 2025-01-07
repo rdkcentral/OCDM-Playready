@@ -26,32 +26,10 @@
 
 #ifdef USE_SVP
 #include "gst_svp_meta.h"
-
-typedef struct Sec_OpaqueBufferHandle_struct
-{
-    uint32_t dataBufSize;
-    //TEEC_Session *sess;
-    uint32_t align;
-    int ion_fd;
-    int map_fd;
-    //TEEC_SharedMemory register_shm;
-    void *rtkmem_handle;
-} Sec_OpaqueBufferHandle;
-
-typedef struct SecureBufferInfo_struct
-{
-    uint32_t secureBufSize;
-    void *pSecBufHandle;
-    void *pPhysAddr;
-    void *pVirtualAddr;
-    uint32_t align;
-    int ion_fd;
-    int map_fd;
-} SecureBufferInfo;
-
 #endif
 
 extern WPEFramework::Core::CriticalSection drmAppContextMutex_;
+extern DRM_CONST_STRING g_dstrCDMDrmStoreName;
 
 #define NYI_KEYSYSTEM "keysystem-placeholder"
 
@@ -220,21 +198,6 @@ void Swap(uint8_t& lhs, uint8_t& rhs)
 
 }
 
-DRM_INIT_CONTEXT g_oDrmInitContext = { "/opt/drm", "/opt/drm/sample.hds" };
-
-const DRM_WCHAR g_rgwchCDMDrmStoreName[] = {WCHAR_CAST('/'), WCHAR_CAST('o'), WCHAR_CAST('p'), WCHAR_CAST('t'), WCHAR_CAST('/'),
-                                            WCHAR_CAST('d'), WCHAR_CAST('r'), WCHAR_CAST('m'), WCHAR_CAST('/'), WCHAR_CAST('s'),
-                                            WCHAR_CAST('a'), WCHAR_CAST('m'), WCHAR_CAST('p'), WCHAR_CAST('l'), WCHAR_CAST('e'),
-                                            WCHAR_CAST('.'), WCHAR_CAST('h'), WCHAR_CAST('d'), WCHAR_CAST('s'), WCHAR_CAST('\0')};
-
-const DRM_WCHAR g_rgwchCDMDrmPath[] = {WCHAR_CAST('/'), WCHAR_CAST('o'), WCHAR_CAST('p'), WCHAR_CAST('t'), WCHAR_CAST('/'),
-                                       WCHAR_CAST('d'), WCHAR_CAST('r'), WCHAR_CAST('m'), WCHAR_CAST('\0')};
-
-const DRM_CONST_STRING g_dstrCDMDrmStoreName = CREATE_DRM_STRING(g_rgwchCDMDrmStoreName);
-const DRM_CONST_STRING g_dstrCDMDrmPath = CREATE_DRM_STRING(g_rgwchCDMDrmPath);
-
-DRM_BOOL MediaKeySession::m_bPrintOPLError = true;
-
 const DRM_CONST_STRING *g_rgpdstrRights[1] = {&g_dstrDRM_RIGHT_PLAYBACK};
 
 uint64_t MediaKeySession::mMaxResDecodePixels = 0;
@@ -340,7 +303,10 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
   return false;
 }
 
-DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize( DRM_INIT_CONTEXT *f_pContext )
+/*
+ * f_pContext(input) : It could be NULL or Valid pointer
+ */
+DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize( void *f_pContext )
 {
     DRM_RESULT dr = DRM_SUCCESS;
     SafeCriticalSection systemLock(prPlatformMutex_);
@@ -351,6 +317,7 @@ DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize( DRM_INIT_CONTEXT *f_pContext )
         DRM_DWORD cAttempts = 0;
 
         while( ( dr=Drm_Platform_Initialize( f_pContext ) ) == DRM_E_DEPRECATED_DEVCERT_READ_ERROR) {
+
             Drm_Platform_Uninitialize( (void *)nullptr );
 
             if ( cAttempts >= DEVCERT_RETRY_MAX ){
@@ -366,7 +333,7 @@ DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize( DRM_INIT_CONTEXT *f_pContext )
     if ( DRM_FAILED( dr ) )
     {
         --m_dwInitRefCount;
-        fprintf(stderr, "[%s:%d] failed. 0x%X - app_dir=%s, global_dir=%s",__FUNCTION__,__LINE__,dr,f_pContext->pszApplicationDir,f_pContext->pszGlobalDir);
+        fprintf(stderr, "[%s:%d] failed. 0x%X",__FUNCTION__,__LINE__,dr);
     }
 
     return dr;
@@ -374,12 +341,15 @@ DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize( DRM_INIT_CONTEXT *f_pContext )
 
 DRM_RESULT CPRDrmPlatform::DrmPlatformInitialize()
 {
-    return DrmPlatformInitialize( &g_oDrmInitContext );
+    void *pPlatformInitData = NULL;
+    svpGetDrmPlatformInitData( &pPlatformInitData);
+    return DrmPlatformInitialize( (void *)pPlatformInitData );
 }
 
 DRM_RESULT CPRDrmPlatform::DrmPlatformUninitialize()
 {
     DRM_RESULT dr = DRM_SUCCESS;
+    DRM_VOID *pDrmOemContext = NULL;
 
     SafeCriticalSection systemLock(prPlatformMutex_);
 
@@ -390,7 +360,9 @@ DRM_RESULT CPRDrmPlatform::DrmPlatformUninitialize()
     }
     else if ( --m_dwInitRefCount == 0 )
     {
-        if ( DRM_FAILED( (dr=Drm_Platform_Uninitialize( (void *)nullptr ) ) ) )
+        svpGetDrmOEMContext(&pDrmOemContext);
+
+        if ( DRM_FAILED( (dr=Drm_Platform_Uninitialize( (void *)pDrmOemContext ) ) ) )
         {
             fprintf(stderr, "[%s:%d] Drm_Platform_Uninitialize failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
             goto ErrorExit;
@@ -443,8 +415,10 @@ PlayreadySession::PlayreadySession()
     , m_cbPROpaqueBuf(0)
     , m_bInitCalled(false)
 {
+  void *pPlatformInitData = NULL;
+  svpGetDrmPlatformInitData( &pPlatformInitData);
 
-  if ( DRM_FAILED( CPRDrmPlatform::DrmPlatformInitialize( &g_oDrmInitContext ) ) )
+  if ( DRM_FAILED( CPRDrmPlatform::DrmPlatformInitialize( pPlatformInitData ) ) )
   {
       fprintf(stderr, "[%s:%d] DrmPlatformInitialize failed.",__FUNCTION__,__LINE__);
   }
@@ -477,6 +451,7 @@ PlayreadySession::~PlayreadySession()
 DRM_APP_CONTEXT * PlayreadySession::InitializeDRM(const DRM_CONST_STRING * pDRMStoreName)
 {
     DRM_RESULT dr = DRM_SUCCESS;
+    DRM_VOID *pDrmOemContext = nullptr;
 
     SafeCriticalSection systemLock(prSessionMutex_);
 
@@ -491,10 +466,11 @@ DRM_APP_CONTEXT * PlayreadySession::InitializeDRM(const DRM_CONST_STRING * pDRMS
         ChkMem( m_poAppContext = (DRM_APP_CONTEXT * )Oem_MemAlloc( sizeof(DRM_APP_CONTEXT) ) );
         ZEROMEM( m_poAppContext, sizeof(DRM_APP_CONTEXT) );
 
-        dr = Drm_Initialize(m_poAppContext, nullptr, m_pbPROpaqueBuf, m_cbPROpaqueBuf, pDRMStoreName);
+        svpGetDrmOEMContext(&pDrmOemContext);
+        dr = Drm_Initialize(m_poAppContext, pDrmOemContext, m_pbPROpaqueBuf, m_cbPROpaqueBuf, pDRMStoreName);
         if (dr != DRM_SUCCESS)
         {
-            ChkDR(Drm_Initialize(m_poAppContext, nullptr, m_pbPROpaqueBuf, m_cbPROpaqueBuf, pDRMStoreName));
+            ChkDR(Drm_Initialize(m_poAppContext, pDrmOemContext, m_pbPROpaqueBuf, m_cbPROpaqueBuf, pDRMStoreName));
         }
   }
   else
@@ -547,6 +523,15 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
 
 #ifdef USE_SVP
   gst_svp_ext_get_context(&m_pSVPContext, Client, 0);
+
+  m_stSecureBuffInfo.bCreateSecureMemRegion = true;
+  m_stSecureBuffInfo.SecureMemRegionSize = 512 * 1024;
+
+  if( 0 != svp_allocate_secure_buffers(m_pSVPContext, (void**)&m_stSecureBuffInfo, nullptr, nullptr, m_stSecureBuffInfo.SecureMemRegionSize))
+  {
+      fprintf(stderr, "[%s:%d]  secure memory, allocate failed [%d]",__FUNCTION__,__LINE__, m_stSecureBuffInfo.SecureMemRegionSize);
+      m_stSecureBuffInfo.SecureMemRegionSize = 0;
+  }
 #endif
 
   std::string initData(reinterpret_cast<const char*>(f_pbInitData), f_cbInitData);
@@ -556,8 +541,6 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
 
   mMaxResDecodePixels = 0;
   mMaxResDecodeSet = false;
-
-  g_dstrDrmPath = g_dstrCDMDrmPath;
 
   if (m_poAppContext == nullptr) {
       m_poAppContext = InitializeDRM(&g_dstrCDMDrmStoreName);
@@ -570,8 +553,6 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
                                    m_pbRevocationBuffer,
                                    REVOCATION_BUFFER_SIZE));
   }
-
-  m_bPrintOPLError = true;
       
   ChkDR(Oem_Random_GetBytes(nullptr, (DRM_BYTE *)&oSessionID, SIZEOF(oSessionID)));
   ZEROMEM(m_rgchSessionID, SIZEOF(m_rgchSessionID));
@@ -729,7 +710,6 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
 
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_DWORD cchSilentURL = 0;
-  
   SAFE_OEM_FREE( m_pbChallenge );
   SAFE_OEM_FREE( m_pchSilentURL );
 
@@ -835,7 +815,6 @@ CDMi_RESULT MediaKeySession::Load(void) {
 
 /*Set KeyId property which will be used by the Reader_Bind during license searching*/
 CDMi_RESULT MediaKeySession::SetKeyIdProperty( const DRM_WCHAR *f_rgwchEncodedKid, DRM_DWORD f_cchEncodedKid ){
-
     DRM_RESULT err = Drm_Content_SetProperty(
             m_poAppContext,
             DRM_CSP_AUTODETECT_HEADER,
@@ -852,7 +831,6 @@ CDMi_RESULT MediaKeySession::SetKeyIdProperty( const DRM_WCHAR *f_rgwchEncodedKi
 
 /*Converting KeyId into base64-encoded format*/
 CDMi_RESULT MediaKeySession::SetKeyIdProperty( KeyId & f_rKeyId ){
-
     DRM_WCHAR rgwchEncodedKid[CCH_BASE64_EQUIV(DRM_ID_SIZE)]= {0};
     DRM_DWORD cchEncodedKid = CCH_BASE64_EQUIV(DRM_ID_SIZE);
 
@@ -909,8 +887,6 @@ DRM_RESULT MediaKeySession::ReaderBind(
             DRMPFNPOLICYCALLBACK  f_pfnPolicyCallback,
             const DRM_VOID             *f_pv,
             DRM_DECRYPT_CONTEXT *f_pDecryptContext ) {
-            
-
     DRM_RESULT dr = DRM_SUCCESS;
     DRM_BYTE *newOpaqueBuffer = nullptr;
 
@@ -1019,6 +995,7 @@ CDMi_RESULT MediaKeySession::PersistentLicenseCheck() {
         }
 
         decryptContext = NEW_DECRYPT_CONTEXT();
+
         dr = ReaderBind(
                     g_rgpdstrRights,
                     NO_OF(g_rgpdstrRights),
@@ -1066,6 +1043,7 @@ ErrorExit:
 // Instead, we allow persistent licenses to be used but attempt to
 // clean them up when the session closes.
 void MediaKeySession::SaveTemporaryPersistentLicenses(const DRM_LICENSE_RESPONSE* f_poLicenseResponse) {
+
     fprintf(stderr, "\n SaveTemporaryPersistentLicenses: response has persistent licenses: %s",
          f_poLicenseResponse->m_fHasPersistentLicenses ? "true" : "false");
 
@@ -1151,9 +1129,12 @@ ErrorExit:
 /*processes the license response and creates decryptor for each valid ack available in the response*/
 void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_cbKeyMessageResponse) {
 
+
     DRM_RESULT dr = DRM_SUCCESS;
     DRM_LICENSE_RESPONSE oLicenseResponse = { eUnknownProtocol, 0 };
     DRM_LICENSE_ACK *pLicenseAck = nullptr;
+    DRM_DWORD decryptionMode;
+    bool bIsAudioNeedNonSVPContext;
 
     ChkBOOL(m_eKeyState == KEY_PENDING, DRM_E_INVALIDARG);
 
@@ -1187,6 +1168,16 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
 
             decryptContext = NEW_DECRYPT_CONTEXT();
 
+            decryptionMode = OEM_TEE_DECRYPTION_MODE_HANDLE;
+            dr = Drm_Content_SetProperty(m_poAppContext,
+                                    DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                    (const DRM_BYTE*)&decryptionMode,
+                                    sizeof decryptionMode);
+            if (!DRM_SUCCEEDED(dr)) {
+                fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+                goto ErrorExit;
+            }
+
             dr = ReaderBind(
                     g_rgpdstrRights,
                     NO_OF(g_rgpdstrRights),
@@ -1197,6 +1188,33 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
             if ( DRM_FAILED( dr ) ){
                 fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
                 goto LoopEnd;
+            }
+
+            bIsAudioNeedNonSVPContext = svpIsAudioNeedNonSVPContext();
+
+            if(bIsAudioNeedNonSVPContext)
+            {
+              decryptionMode = OEM_TEE_DECRYPTION_MODE_NOT_SECURE;
+              dr = Drm_Content_SetProperty(m_poAppContext,
+                                      DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                      (const DRM_BYTE*)&decryptionMode,
+                                      sizeof decryptionMode);
+              if (!DRM_SUCCEEDED(dr)) {
+                  fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+                  goto ErrorExit;
+              }
+
+              dr = ReaderBind(
+                      g_rgpdstrRights,
+                      NO_OF(g_rgpdstrRights),
+                      _PolicyCallback,
+                      &m_playreadyLevels,
+                      &(decryptContext->oDrmDecryptAudioContext) );
+
+              if ( DRM_FAILED( dr ) ){
+                  fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+                  goto LoopEnd;
+              }
             }
 
             decryptContext->keyId = keyId;
@@ -1243,10 +1261,10 @@ CDMi_RESULT MediaKeySession::Remove(void) {
 /*Closes each DRM_DECRYPT_CONTEXT using Drm_Reader_Close()*/
 void MediaKeySession::CloseDecryptContexts(void) {
     m_currentDecryptContext = nullptr;
-
     for (DECRYPT_CONTEXT &p : m_DecryptContextVector)
     {
         Drm_Reader_Close(&(p->oDrmDecryptContext));
+        Drm_Reader_Close(&(p->oDrmDecryptAudioContext));
     }
     m_DecryptContextVector.clear();
 }
@@ -1270,6 +1288,15 @@ CDMi_RESULT MediaKeySession::Close(void) {
     if ( m_eKeyState != KEY_CLOSED ) {
 #ifdef USE_SVP
         gst_svp_ext_free_context(m_pSVPContext);
+        m_stSecureBuffInfo.bReleaseSecureMemRegion = true;
+        if(0 != svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, nullptr, nullptr, 0))
+        {
+            fprintf(stderr, "[%s:%d]  secure memory, free failed",__FUNCTION__,__LINE__);
+        }
+        else {
+            m_stSecureBuffInfo.bCreateSecureMemRegion = false;
+            m_stSecureBuffInfo.SecureMemRegionSize = 0;
+        }
 #endif
 
         SAFE_OEM_FREE(m_pbChallenge);
@@ -1312,6 +1339,10 @@ const char* MediaKeySession::MapDrToKeyMessage( DRM_RESULT dr )
     case DRM_E_TEE_OUTPUT_PROTECTION_INSUFFICIENT_HDCP22:
     case DRM_E_TEST_INVALID_OPL_CALLBACK:
         return "KeyOutputRestrictedHDCP22";
+    case DRM_E_LICENSE_NOT_FOUND:
+        return "LicenseNotFound";
+    case DRM_E_LICENSE_EXPIRED:
+        return "LicenseExpired";
     default:
         return "KeyInternalError";
     }
@@ -1380,81 +1411,56 @@ CDMi_RESULT MediaKeySession::Decrypt(
         const IStreamProperties* properties)
 {
   CDMi_RESULT ret = CDMi_S_FALSE;
-  bool useSVP = false;
-
-#if defined (RESOLUTION_CHECK_ENABLED)
-  uint64_t mCurrentPixels;
-  if (properties->GetMediaType() == Video) {
-      mCurrentPixels = properties->GetHeight() * properties->GetWidth();
-  }
-
-  /* MaxResDecode */
-  if (mMaxResDecodeSet) {
-    if ((mCurrentPixels > mMaxResDecodePixels)) {
-        fprintf(stderr, "[%s:%d] video resolution:%llu exceeds maximum resolution:%lu",__FUNCTION__,__LINE__,mCurrentPixels,mMaxResDecodePixels);
-        return CDMi_S_FALSE;
-    }
-  }
-#endif /* RESOLUTION_CHECK_ENABLED */
-
-#if defined (DYNAMIC_SVP_DECRYPTION)
-  if (properties->GetMediaType() == Video) {
-      useSVP = true;
-  }
-#endif /* DYNAMIC_SVP_DECRYPTION */
-
-  if (sampleInfo->scheme == AesCbc_Cbc1 || sampleInfo->scheme == AesCbc_Cbcs) {  //CBC
-    ret = DecryptAesCBC1(sampleInfo->subSample, sampleInfo->subSampleCount,
-                           sampleInfo->iv, sampleInfo->ivLength,
-                           inData, inDataLength,
-                           outDataLength, outData,
-                           sampleInfo->keyIdLength, sampleInfo->keyId,
-                           properties->InitLength(),
-                           sampleInfo->pattern.encrypted_blocks, sampleInfo->pattern.clear_blocks,
-                           useSVP);
-  } else { //AesCtr_Cenc, AesCtr_Cens
-    ret = DecryptAesCTR1(sampleInfo->subSample, sampleInfo->subSampleCount,
-                           sampleInfo->iv, sampleInfo->ivLength,
-                           inData, inDataLength,
-                           outDataLength, outData,
-                           sampleInfo->keyIdLength, sampleInfo->keyId,
-                           properties->InitLength(),
-                           useSVP);
-  }
-  return ret;
-}
-
-CDMi_RESULT MediaKeySession::DecryptAesCBC1(
-    SubSampleInfo* subSample,
-    uint8_t subSampleCount,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    uint8_t initWithLast15,
-    uint32_t cryptoBlocks,
-    uint32_t clearBlocks,
-    bool useSVP)
-{
-  void     *decryptedData  = nullptr;
-  uint32_t *f_pdwSubSampleMapping;
-  uint32_t f_cdwSubSampleMapping;
   DRM_RESULT dr = DRM_SUCCESS;
   DRM_RESULT err = DRM_SUCCESS;
-  uint32_t actualDataLength = 0;
-  void *pSecureMemory = NULL;
-  SecureBufferInfo *pstSecBufInfo = NULL;
-  uint32_t encryptedDataSize = 0;
+  DRM_UINT64 iv_high = 0;
+  DRM_UINT64 iv_low = 0;
+  void* pSecureToken = nullptr;
+  uint8_t* pEncryptedDataStart  = nullptr;
+  uint32_t actualEncDataLength = 0;
   void* header = NULL;
+  DRM_DWORD encryptedRegionIvCounts = 1;
+  DRM_DWORD encryptedRegionCounts;
+  std::vector<DRM_DWORD> encryptedRegionSkip;
+  std::vector<DRM_DWORD> encryptedRegionMapping;
+  bool bGstSvpStatus = false;
+  bool useSVP = true; // By default SVP is required
+  DRM_UINT64 iv_vector[2] = { 0 };
+  bool bIsVideoResCheckNeed = false;
+  bool bIsDynamicSVPEncEnabled = false;
+  uint64_t mCurrentPixels;
+  bool bIsAudioNeedNonSVPContext;
+  bool bIsMultipleOpaqueSupportCTR = false;
 
-  assert(f_cbIV == EXPECTED_AES_CBC_IVDATA_SIZE);
+  assert(sampleInfo->ivLength > 0);
 
-  if ( f_keyId != nullptr ){
-      KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
+  bIsVideoResCheckNeed = svpIsVideoResCheckNeed();
+
+  if(bIsVideoResCheckNeed)
+  {
+    if (properties->GetMediaType() == Video) {
+        mCurrentPixels = properties->GetHeight() * properties->GetWidth();
+    }
+
+    /* MaxResDecode */
+    if (mMaxResDecodeSet) {
+      if ((mCurrentPixels > mMaxResDecodePixels)) {
+          fprintf(stderr, "[%s:%d] video resolution:%llu exceeds maximum resolution:%lu",__FUNCTION__,__LINE__,mCurrentPixels,mMaxResDecodePixels);
+          return CDMi_S_FALSE;
+      }
+    }
+  }
+
+  bIsDynamicSVPEncEnabled = svpIsDynamicSVPEncEnabled();
+  if(bIsDynamicSVPEncEnabled)
+  {
+    if (properties->GetMediaType() != Video) {
+      useSVP = false;
+    }
+  }
+
+  if ( sampleInfo->keyId != nullptr ){
+      KeyId keyId(&sampleInfo->keyId[0],KeyId::KEYID_ORDER_UUID_BE);
 
       if (m_currentDecryptContext == nullptr
                 || m_currentDecryptContext->keyId != keyId)
@@ -1462,6 +1468,7 @@ CDMi_RESULT MediaKeySession::DecryptAesCBC1(
           m_currentDecryptContext = GetDecryptCtx( keyId );
       }
   }
+
   if ( m_currentDecryptContext == nullptr ){
       fprintf(stderr, "[%s:%d] m_currentDecryptContext is Nullptr",__FUNCTION__,__LINE__);
       return CDMi_S_FALSE;
@@ -1469,91 +1476,181 @@ CDMi_RESULT MediaKeySession::DecryptAesCBC1(
 
   SafeCriticalSection systemLock(drmAppContextMutex_);
 
-  assert(f_cbIV > 0);
-  if(payloadDataSize == 0){
-      return CDMi_SUCCESS;
-  }
-
-  uint8_t *iv = malloc(f_cbIV * sizeof(uint8_t));
-
-  if (initWithLast15) {
+  if (properties->InitLength()) {
       // Netflix case
-      memcpy(iv, f_pbIV, f_cbIV * sizeof(uint8_t));
+      memcpy(iv_vector, sampleInfo->iv, sampleInfo->ivLength * sizeof(uint8_t));
 
   } else {
-      // Regular case
-      uint8_t buf[ f_cbIV ];
-      for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-        buf[i] = f_pbIV[f_cbIV - i - 1];
-        buf[f_cbIV - i - 1] = f_pbIV[i];
-      }
-      memcpy(iv, buf, f_cbIV * sizeof(uint8_t));
+    // Regular case
+    NETWORKBYTES_TO_QWORD(iv_vector[0], sampleInfo->iv, 0);
+    if (sampleInfo->ivLength == 16) {
+        NETWORKBYTES_TO_QWORD(iv_vector[1], sampleInfo->iv, 8);
+    }
   }
 
-  if (gst_svp_has_header(m_pSVPContext, payloadData))
+  if (gst_svp_has_header(m_pSVPContext, inData))
   {
-    header = (void*)payloadData;
-    decryptedData = reinterpret_cast<DRM_BYTE *>(gst_svp_header_get_start_of_data(m_pSVPContext, header));
-    gst_svp_header_get_field(m_pSVPContext, header, SvpHeaderFieldName::DataSize, &actualDataLength);
+
+    header = (void*)inData;
+    pEncryptedDataStart = reinterpret_cast<DRM_BYTE *>(gst_svp_header_get_start_of_data(m_pSVPContext, header));
+    gst_svp_header_get_field(m_pSVPContext, header, SvpHeaderFieldName::DataSize, &actualEncDataLength);
   }
 
-#ifdef USE_SVP
-  if (useSVP)
-  {
-    // Allocate secure buffer for decryption.
-    pstSecBufInfo = (SecureBufferInfo*)malloc(sizeof(SecureBufferInfo));
-    svp_allocate_secure_buffers(m_pSVPContext, &pstSecBufInfo, &pSecureMemory, nullptr, actualDataLength);
-  }
-#endif
-
-  DRM_DWORD encryptedRegionIvCounts = 1;
-  DRM_DWORD encryptedRegionCounts;
-  std::vector<DRM_DWORD> encryptedRegion;
-  std::vector<DRM_DWORD> encryptedRegionMapping;
-  std::vector<DRM_UINT64> iv_high;
-  std::vector<DRM_UINT64> iv_low;
-  DRM_UINT64 iv64;
-
-  NETWORKBYTES_TO_QWORD(iv64, &iv[0], 0);
-  iv_high.push_back(iv64);
-
-  NETWORKBYTES_TO_QWORD(iv64, &iv[8], 0);
-  iv_low.push_back(iv64);
-
-  if (subSampleCount > 0) {
-    for (unsigned int position = 0; position < subSampleCount; position++) {
-      encryptedRegionMapping.push_back(static_cast<uint32_t> (subSample[position].clear_bytes));
-      encryptedRegionMapping.push_back(static_cast<uint32_t> (subSample[position].encrypted_bytes));
+  if (sampleInfo->subSampleCount > 0) {
+    for (int i = 0; i < sampleInfo->subSampleCount; i++) {
+      encryptedRegionMapping.push_back(sampleInfo->subSample[i].clear_bytes);
+      encryptedRegionMapping.push_back(sampleInfo->subSample[i].encrypted_bytes);
     }
   } else {
       encryptedRegionMapping.push_back(0);
-      encryptedRegionMapping.push_back(actualDataLength);
+      encryptedRegionMapping.push_back(actualEncDataLength);
   }
 
   encryptedRegionCounts = encryptedRegionMapping.size()/2;
 
-  encryptedRegion.push_back(cryptoBlocks);
-  encryptedRegion.push_back(clearBlocks);
-
-  DRM_DWORD* decryptedLength = 0;
-  DRM_BYTE** decryptedContent = NULL;
-  if (useSVP)
+  if(useSVP)
   {
-    decryptedLength = reinterpret_cast<DRM_DWORD*>(actualDataLength);
-    decryptedContent = reinterpret_cast<DRM_BYTE**>(pstSecBufInfo->pPhysAddr);
+    // Reallocate input memory if needed.
+    if(m_stSecureBuffInfo.bCreateSecureMemRegion)
+    {
+        if (actualEncDataLength >  m_stSecureBuffInfo.SecureMemRegionSize) {
+            m_stSecureBuffInfo.bReleaseSecureMemRegion = true;
+            if(0 != svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, nullptr, nullptr, 0))
+            {
+                fprintf(stderr, "[%s:%d]  Secure memory free falied",__FUNCTION__,__LINE__);
+                return CDMi_S_FALSE;
+            }
+            m_stSecureBuffInfo.SecureMemRegionSize = actualEncDataLength;
+            m_stSecureBuffInfo.bReleaseSecureMemRegion = false;
+
+            if(0 != svp_allocate_secure_buffers(m_pSVPContext, (void**)&m_stSecureBuffInfo, nullptr, nullptr, m_stSecureBuffInfo.SecureMemRegionSize))
+            {
+                fprintf(stderr, "[%s:%d] Secure memory, re-allocation failed %d",__FUNCTION__,__LINE__, m_stSecureBuffInfo.SecureMemRegionSize);
+                return CDMi_S_FALSE;
+            }
+        }
+    }
+
+    m_stSecureBuffInfo.patternClearBlocks = sampleInfo->pattern.clear_blocks;
+
+    if(0 != svp_allocate_secure_buffers(m_pSVPContext, (void**)&m_stSecureBuffInfo, nullptr, pEncryptedDataStart, actualEncDataLength))
+    {
+        fprintf(stderr, "[%s:%d]  secure memory, allocate failed [%d]",__FUNCTION__,__LINE__, actualEncDataLength);
+        return CDMi_S_FALSE;
+    }
+
+    svpSetHandleToTEE(m_stSecureBuffInfo.pSecBufHandle);
+
+    bGstSvpStatus = svp_buffer_alloc_token(&pSecureToken);
+    if (!bGstSvpStatus) {
+        fprintf(stderr, "[%s:%d]  memory allocation for Token is failure",__FUNCTION__,__LINE__);
+        m_stSecureBuffInfo.bReleaseSecureMemRegion = false;
+        // Free decrypted secure buffer.
+        svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, (void*)m_stSecureBuffInfo.pAVSecBuffer , nullptr, 0);
+        return CDMi_S_FALSE;
+    }
+
+    bGstSvpStatus = svp_buffer_to_token(m_pSVPContext, (void *)&m_stSecureBuffInfo, pSecureToken);
+    if (!bGstSvpStatus) {
+        fprintf(stderr, "[%s:%d]  Buffer to Token creation is failure",__FUNCTION__,__LINE__);
+        m_stSecureBuffInfo.bReleaseSecureMemRegion = false;
+        // Free decrypted secure buffer.
+        svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, (void*)m_stSecureBuffInfo.pAVSecBuffer , nullptr, 0);
+        svp_buffer_free_token(pSecureToken);
+        return CDMi_S_FALSE;
+    }
   }
 
-  err = Drm_Reader_DecryptMultipleOpaque(&(m_currentDecryptContext->oDrmDecryptContext),
-                                               encryptedRegionIvCounts,
-                                               &iv_high[0], &iv_low[0],
-                                               &encryptedRegionCounts,
-                                               encryptedRegionMapping.size(), &encryptedRegionMapping[0],
-                                               encryptedRegion.size(), &encryptedRegion[0],
-                                               (DRM_DWORD) actualDataLength,
-                                               (DRM_BYTE *) decryptedData,
-                                               reinterpret_cast<DRM_DWORD*>(&decryptedLength), reinterpret_cast<DRM_BYTE**>(&decryptedContent));
-  free(iv);
-  iv = NULL;
+  if (sampleInfo->pattern.encrypted_blocks != 0){
+      encryptedRegionSkip.push_back(sampleInfo->pattern.encrypted_blocks);
+      encryptedRegionSkip.push_back(sampleInfo->pattern.clear_blocks);
+  }
+
+  DRM_DWORD* pDecryptedLength = 0;
+  DRM_BYTE** ppDecryptedContent = NULL;
+  DRM_BYTE*  pEncryptedData = NULL;
+
+  if (useSVP)
+  {
+    pDecryptedLength = reinterpret_cast<DRM_DWORD*>(actualEncDataLength);
+    ppDecryptedContent = reinterpret_cast<DRM_BYTE**>(m_stSecureBuffInfo.pPhysAddr);
+    pEncryptedData = reinterpret_cast<DRM_BYTE*>(m_stSecureBuffInfo.pEncryptedDataBuffer);
+  }
+  else
+  {
+      pEncryptedData = pEncryptedDataStart;
+  }
+
+  /* For Video */
+  if (useSVP == true)
+  {
+    // bool svpIsMultipleOpaqueSupportCTR( void );
+    bIsMultipleOpaqueSupportCTR = svpIsMultipleOpaqueSupportCTR();
+
+    if(bIsMultipleOpaqueSupportCTR)
+    {
+      err = Drm_Reader_DecryptMultipleOpaque(&(m_currentDecryptContext->oDrmDecryptContext),
+                                                encryptedRegionIvCounts,
+                                                iv_vector,
+                                                sampleInfo->ivLength == 16 ? iv_vector + 1 : nullptr,
+                                                &encryptedRegionCounts,
+                                                encryptedRegionMapping.size(),
+                                                &encryptedRegionMapping[0],
+                                                encryptedRegionSkip.size(),
+                                                &encryptedRegionSkip[0],
+                                                (DRM_DWORD) actualEncDataLength,
+                                                (DRM_BYTE *) pEncryptedData,
+                                                reinterpret_cast<DRM_DWORD*>(&pDecryptedLength),
+                                                reinterpret_cast<DRM_BYTE**>(&ppDecryptedContent));
+    } else {
+      err = Drm_Reader_DecryptOpaque(
+                        &(m_currentDecryptContext->oDrmDecryptContext),
+                        encryptedRegionMapping.size(),
+                        reinterpret_cast<const DRM_DWORD*>(&encryptedRegionMapping[0]),
+                        iv_vector[0],
+                        actualEncDataLength,
+                        (DRM_BYTE *) pEncryptedData,
+                        reinterpret_cast<DRM_DWORD*>(&pDecryptedLength),
+                        reinterpret_cast<DRM_BYTE**>(&ppDecryptedContent));
+    }
+
+  }
+  else
+  {
+    bIsAudioNeedNonSVPContext = svpIsAudioNeedNonSVPContext();
+    bIsMultipleOpaqueSupportCTR = svpIsMultipleOpaqueSupportCTR();
+
+    if(bIsMultipleOpaqueSupportCTR)
+    {
+      /* For Audio with Non-SVP support*/
+      err = Drm_Reader_DecryptMultipleOpaque(&(bIsAudioNeedNonSVPContext ? m_currentDecryptContext->oDrmDecryptAudioContext :
+                                                  m_currentDecryptContext->oDrmDecryptContext),
+                                                encryptedRegionIvCounts,
+                                                iv_vector,
+                                                sampleInfo->ivLength == 16 ? iv_vector + 1 : nullptr,
+                                                &encryptedRegionCounts,
+                                                encryptedRegionMapping.size(),
+                                                &encryptedRegionMapping[0],
+                                                encryptedRegionSkip.size(),
+                                                &encryptedRegionSkip[0],
+                                                (DRM_DWORD) actualEncDataLength,
+                                                (DRM_BYTE *) pEncryptedData,
+                                                reinterpret_cast<DRM_DWORD*>(&pDecryptedLength),
+                                                reinterpret_cast<DRM_BYTE**>(&ppDecryptedContent));
+    } else {
+      err = Drm_Reader_DecryptOpaque(
+                        &(bIsAudioNeedNonSVPContext ? m_currentDecryptContext->oDrmDecryptAudioContext :
+                                                  m_currentDecryptContext->oDrmDecryptContext),
+                        encryptedRegionMapping.size(),
+                        reinterpret_cast<const DRM_DWORD*>(&encryptedRegionMapping[0]),
+                        iv_vector[0],
+                        actualEncDataLength,
+                        (DRM_BYTE *) pEncryptedData,
+                        reinterpret_cast<DRM_DWORD*>(&pDecryptedLength),
+                        reinterpret_cast<DRM_BYTE**>(&ppDecryptedContent));
+    }
+
+  }
 
   if (DRM_FAILED(err))
   {
@@ -1562,11 +1659,40 @@ CDMi_RESULT MediaKeySession::DecryptAesCBC1(
 #ifdef USE_SVP
     if (useSVP)
     {
-        // Free decrypted secure buffer.
-        svp_release_secure_buffers(m_pSVPContext, nullptr, pSecureMemory, nullptr, 0);
+      m_stSecureBuffInfo.bReleaseSecureMemRegion = false;
+      // Free decrypted secure buffer.
+      svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, (void*)m_stSecureBuffInfo.pAVSecBuffer , nullptr, 0);
+      svp_buffer_free_token(pSecureToken);
     }
 #endif
     return err;
+  }
+
+  if(useSVP)
+  {
+    // Add a header to the output buffer.
+    if (header)
+    {
+      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::Handle);
+    }
+
+    memcpy((void *)(uint8_t*)pEncryptedDataStart, pSecureToken, svp_token_size());
+    svp_buffer_free_token(pSecureToken);
+  }
+  else
+  {
+    if (header)
+    {
+      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::InPlace);
+    }
+
+  }
+
+  if (useSVP)
+  {
+    m_stSecureBuffInfo.bReleaseSecureMemRegion = false;
+    // Free decrypted secure buffer.
+    svp_release_secure_buffers(m_pSVPContext, (void*)&m_stSecureBuffInfo, nullptr , nullptr, 0);
   }
 
   if (!m_fCommit) {
@@ -1574,651 +1700,13 @@ CDMi_RESULT MediaKeySession::DecryptAesCBC1(
     m_fCommit = TRUE;
   }
 
-  if (useSVP){
-    void* secToken = NULL;
-    svp_buffer_alloc_token(&secToken);
-    svp_buffer_to_token(m_pSVPContext, (void *)pstSecBufInfo, secToken);
-
-    // Add a header to the output buffer.
-    if (header)
-    {
-      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::Handle);
-    }
-
-    memcpy((uint8_t *)decryptedData, secToken, svp_token_size());
-    svp_buffer_free_token(secToken);
-    //TODO: note the return token data and size
-  } else{
-    if (header)
-    {
-      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::InPlace);
-    }
-
-  }
-
-  // Return clear content.
-  *f_pcbOpaqueClearContent = actualDataLength;
-  *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-
-  if(useSVP && pstSecBufInfo)
-  {
-    free(pstSecBufInfo);
-    pstSecBufInfo = NULL;
-  }
+  // Copy and Return the Memory token in the incoming payload buffer.
+  *outDataLength = inDataLength;
+  *outData = inData;
 
   return CDMi_SUCCESS;
+
 }
-
-CDMi_RESULT MediaKeySession::DecryptAesCTR1(
-    SubSampleInfo* subSample,
-    uint8_t subSampleCount,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    uint8_t initWithLast15,
-    bool useSVP)
-{
-  void *decryptedData  = nullptr;
-  uint32_t *f_pdwSubSampleMapping = NULL;
-  uint32_t f_cdwSubSampleMapping = 0;
-  DRM_RESULT err = DRM_SUCCESS;
-  uint32_t actualDataLength = 0;
-  void *DstPhys = NULL;
-  void *pSecureMemory = NULL;
-  SecureBufferInfo *pstSecBufInfo = NULL;
-  uint32_t encryptedDataSize = 0;
-  void* header = NULL;
-
-  if ( f_keyId != nullptr ){
-      KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
-
-      if (m_currentDecryptContext == nullptr
-                || m_currentDecryptContext->keyId != keyId)
-      {
-          m_currentDecryptContext = GetDecryptCtx( keyId );
-      }
-  }
-  if ( m_currentDecryptContext == nullptr ){
-      fprintf(stderr, "[%s:%d] m_currentDecryptContext is Nullptr",__FUNCTION__,__LINE__);
-      return CDMi_S_FALSE;
-  }
-
-  SafeCriticalSection systemLock(drmAppContextMutex_);
-
-  assert(f_cbIV > 0);
-  if(payloadDataSize == 0){
-      return CDMi_SUCCESS;
-  }
-
-  DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
-
-  if (initWithLast15) {
-      // Netflix case
-      memcpy(&ctrContext, f_pbIV, DRM_MIN(f_cbIV, sizeof(ctrContext)) );
-  } else {
-      // Regular case
-      uint8_t buf[ f_cbIV ];
-      for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-        buf[i] = f_pbIV[f_cbIV - i - 1];
-        buf[f_cbIV - i - 1] = f_pbIV[i];
-      }
-      MEMCPY(&ctrContext.qwInitializationVector, buf, f_cbIV);
-  }
-
-  if (gst_svp_has_header(m_pSVPContext, payloadData))
-  {
-    header = (void*)payloadData;
-    decryptedData = reinterpret_cast<DRM_BYTE *>(gst_svp_header_get_start_of_data(m_pSVPContext, header));
-    gst_svp_header_get_field(m_pSVPContext, header, SvpHeaderFieldName::DataSize, &actualDataLength);
-  }
-
-#ifdef USE_SVP
-  if (useSVP)
-  {   
-    // Allocate secure buffer for decryption.
-    pstSecBufInfo = (SecureBufferInfo*)malloc(sizeof(SecureBufferInfo));
-    svp_allocate_secure_buffers(m_pSVPContext, &pstSecBufInfo, &pSecureMemory, nullptr, actualDataLength);
-  }
-#endif
-
-  DRM_DWORD rgdwMappings[ 2* subSampleCount ];
-  DRM_DWORD rgdwMappings1[ 2 ];
-
-  if ( subSampleCount != 0) {
-    for (unsigned int position = 0,i=0; position < subSampleCount; position++,i=i+1) {
-        rgdwMappings[i]   = subSample[position].clear_bytes;
-        rgdwMappings[++i] = subSample[position].encrypted_bytes;
-    }
-
-    f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-    f_cdwSubSampleMapping = NO_OF(rgdwMappings);
-  } else {
-    rgdwMappings1[0] = 0;
-    rgdwMappings1[1] = actualDataLength;
-    f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings1);
-    f_cdwSubSampleMapping = NO_OF(rgdwMappings1);
-  }
-
-  DRM_DWORD* decryptedLength = 0;
-  DRM_BYTE** decryptedContent = NULL;
-  if (useSVP)
-  {
-    decryptedLength = reinterpret_cast<DRM_DWORD*>(actualDataLength);
-    decryptedContent = reinterpret_cast<DRM_BYTE**>(pstSecBufInfo->pPhysAddr);
-  }
-
-  err = Drm_Reader_DecryptOpaque(
-        &(m_currentDecryptContext->oDrmDecryptContext),
-        f_cdwSubSampleMapping,
-        reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-        ctrContext.qwInitializationVector,
-        actualDataLength,
-        (DRM_BYTE *) decryptedData,
-        reinterpret_cast<DRM_DWORD*>(&decryptedLength),
-        reinterpret_cast<DRM_BYTE**>(&decryptedContent));
-
-  if (DRM_FAILED(err))
-  {
-      fprintf(stderr, "[%s:%d] Drm_Reader_DecryptOpaque failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
-      DRM_DecryptFailure(err, nullptr, nullptr, nullptr);
-#ifdef USE_SVP
-      if (useSVP) {
-          // Free decrypted secure buffer.
-          svp_release_secure_buffers(m_pSVPContext, nullptr, pSecureMemory, nullptr, 0);
-      }
-#endif
-      return CDMi_S_FALSE;
-  }
-
-  if (!m_fCommit) {
-      err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, &m_playreadyLevels);
-      m_fCommit = TRUE;
-  }
-
-  if (useSVP){
-    void* secToken = NULL;
-    svp_buffer_alloc_token(&secToken);
-    svp_buffer_to_token(m_pSVPContext, (void*)pstSecBufInfo, secToken);
-
-    // Add a header to the output buffer.
-    if (header)
-    {
-      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::Handle);
-    }
-
-    memcpy((uint8_t *)decryptedData, secToken, svp_token_size());
-    svp_buffer_free_token(secToken);
-    //TODO: note the return token data and size
-  } else{
-    if (header)
-    {
-      gst_svp_header_set_field(m_pSVPContext, header, SvpHeaderFieldName::Type, TokenType::InPlace);
-    }
-  }
-
-  // Return clear content.
-  *f_pcbOpaqueClearContent = actualDataLength;
-  *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-
-  if(useSVP && pstSecBufInfo)
-  {
-    free(pstSecBufInfo);
-    pstSecBufInfo = NULL;
-  }
-  return CDMi_SUCCESS;
-}
-
-#if 0
-CDMi_RESULT MediaKeySession::Decrypt(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const EncryptionScheme encryptionScheme,
-    const EncryptionPattern& pattern,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    uint8_t* payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15
-    )
-{
-  CDMi_RESULT ret = CDMi_S_FALSE;
-  uint32_t *f_pdwSubSampleMapping;
-  uint32_t f_cdwSubSampleMapping;
-
-  printf("anto mediasession: old decrypt called\n");
-
-#if 0
-        if (encryptionScheme == 1) {  //CBC
-                ret = DecryptAesCBC(f_pdwSubSampleMapping, f_cdwSubSampleMapping,
-                                        f_pbIV, f_cbIV,
-                                        payloadData, payloadDataSize,
-                                        f_pcbOpaqueClearContent, f_ppbOpaqueClearContent,
-                                        keyIdLength, f_keyId,
-                                        initWithLast15,
-                                        pattern.encrypted_blocks, pattern.clear_blocks);
-        } else {
-                ret = DecryptAesCTR(f_pdwSubSampleMapping, f_cdwSubSampleMapping,
-                                        f_pbIV, f_cbIV,
-                                        payloadData, payloadDataSize,
-                                        f_pcbOpaqueClearContent, f_ppbOpaqueClearContent,
-                                        keyIdLength, f_keyId,
-                                        initWithLast15);
-        }
-#endif
-        return ret;
-}
-
-CDMi_RESULT MediaKeySession::DecryptAesCBC(
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15,
-    uint32_t cryptoBlocks,
-    uint32_t clearBlocks
-    )
-{
-  DRM_RESULT dr = DRM_SUCCESS;
-  DRM_RESULT err = DRM_SUCCESS;
-  uint32_t actualDataLength = 0;
-  void *DstPhys = NULL;
-  bool useSVP = true;
-#ifdef USE_SVP
-  RtkSecureMemory *rtkmem = NULL;
-#endif
-
-  assert(f_cbIV == EXPECTED_AES_CBC_IVDATA_SIZE);
-
-  if ( f_keyId != nullptr ){
-      KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
-
-      if (m_currentDecryptContext == nullptr
-                || m_currentDecryptContext->keyId != keyId)
-      {
-          m_currentDecryptContext = GetDecryptCtx( keyId );
-      }
-  }
-  if ( m_currentDecryptContext == nullptr ){
-      fprintf(stderr, "[%s:%d] m_currentDecryptContext is Nullptr",__FUNCTION__,__LINE__);
-      return CDMi_S_FALSE;
-
-  }
-
-
-  SafeCriticalSection systemLock(drmAppContextMutex_);
-
-
-  assert(f_cbIV > 0);
-  if(payloadDataSize == 0){
-      return CDMi_SUCCESS;
-  }
-
-  uint8_t *iv = malloc(f_cbIV * sizeof(uint8_t));
-
-  if (initWithLast15) {
-      // Netflix case
-          memcpy(iv, f_pbIV, f_cbIV * sizeof(uint8_t));
-
-  } else {
-      // Regular case
-      uint8_t buf[ f_cbIV ];
-      for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-        buf[i] = f_pbIV[f_cbIV - i - 1];
-        buf[f_cbIV - i - 1] = f_pbIV[i];
-      }
-      memcpy(iv, buf, f_cbIV * sizeof(uint8_t));
-  }
-
-          DRM_DWORD rgdwMappings[2];
-          if ( NULL == f_pdwSubSampleMapping )
-  {
-      rgdwMappings[0] = 0;
-      rgdwMappings[1] = payloadDataSize;
-      f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-      f_cdwSubSampleMapping = NO_OF(rgdwMappings);
-  }
-        uint8_t *data = const_cast<uint8_t*>(payloadData);
-        uint32_t subSampleCount = 0;
-        uint16_t inClear = 0;
-        uint32_t inEncrypted = 0;
-        uint8_t *dataItr = data;
-        DRM_DWORD encryptedRegionIvCounts = 1;
-        std::vector<DRM_DWORD> encryptedRegionCounts;
-        std::vector<DRM_DWORD> encryptedRegion;
-        std::vector<DRM_DWORD> encryptedRegionMapping;
-        std::vector<DRM_UINT64> iv_high;
-        std::vector<DRM_UINT64> iv_low;
-  DRM_UINT64 iv64;
-
-        NETWORKBYTES_TO_QWORD(iv64, &iv[0], 0);
-  iv_high.push_back(iv64);
-
-  NETWORKBYTES_TO_QWORD(iv64, &iv[8], 0);
-  iv_low.push_back(iv64);
-
-  memcpy(&subSampleCount, data, sizeof(subSampleCount));
-  dataItr += sizeof(subSampleCount);
-
-        encryptedRegionCounts.push_back(subSampleCount);
-
-#ifdef USE_SVP
-  if (useSVP)
-  {
-    actualDataLength = payloadDataSize - svp_token_size();
-
-    // Allocate secure buffer for decryption.
-    rtkmem = rtk_secure_mem_new(actualDataLength, RTKMEM_VIDEO);
-    DstPhys = rtkmem->phys_addr;
-  }
-  else
-#endif
-  {
-    actualDataLength = payloadDataSize;
-  }
-
-  payloadDataSize = actualDataLength;
-
-  for (unsigned int position = 0; position < subSampleCount; position++) {
-    inClear = 0;
-    inEncrypted = 0;
-    memcpy(&inClear, dataItr, sizeof(inClear));
-    dataItr += sizeof(inClear);
-    inClear = htons(inClear);
-        encryptedRegionMapping.push_back(static_cast<uint32_t> (inClear));
-    memcpy(&inEncrypted, dataItr, sizeof(inEncrypted));
-    dataItr += sizeof(inEncrypted);
-          encryptedRegionMapping.push_back(htonl(inEncrypted));
-  }
-        encryptedRegion.push_back(cryptoBlocks);
-    encryptedRegion.push_back(clearBlocks);
-
-        DRM_DWORD* decryptedLength = 0;
-        DRM_BYTE** decryptedContent = NULL;
-    if (useSVP) {
-                  decryptedLength = reinterpret_cast<DRM_DWORD*>(&payloadDataSize);
-                  decryptedContent = reinterpret_cast<DRM_BYTE**>(&DstPhys);
-        }
-
-   int numBytesInMapping = 0;
-    for (auto it : encryptedRegionMapping) {
-        numBytesInMapping += it;
-    }
-
-    if (useSVP)
-    {
-        err = Drm_Reader_DecryptMultipleOpaque(&(m_currentDecryptContext->oDrmDecryptContext),
-                                                      encryptedRegionIvCounts,
-                                                      &iv_high[0], &iv_low[0],
-                                                      &encryptedRegionCounts[0],
-                                                      encryptedRegionMapping.size(), &encryptedRegionMapping[0],
-                                                      encryptedRegion.size(), &encryptedRegion[0],
-                                                      (DRM_DWORD) actualDataLength, (DRM_BYTE *) dataItr,
-                                                      decryptedLength, decryptedContent);
-     }
-     else
-     {
-         err = Drm_Reader_DecryptMultipleOpaque(&(m_currentDecryptContext->oDrmDecryptContext),
-                                                      encryptedRegionIvCounts,
-                                                      &iv_high[0], &iv_low[0],
-                                                      &encryptedRegionCounts[0],
-                                                      encryptedRegionMapping.size(), &encryptedRegionMapping[0],
-                                                      encryptedRegion.size(), &encryptedRegion[0],
-                                                      (DRM_DWORD) actualDataLength, (DRM_BYTE *) dataItr,
-                                                      reinterpret_cast<DRM_DWORD*>(&decryptedLength), reinterpret_cast<DRM_BYTE**>(&decryptedContent));
-     }
-
-    free(iv);
-    iv = NULL;
-
-  if (DRM_FAILED(err))
-  {
-      fprintf(stderr, "[%s:%d] Drm_Reader_DecryptMultipleOpaque failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
-#ifdef USE_SVP
-      if (useSVP)
-      {
-          // Free decrypted secure buffer.
-          rtk_secure_mem_free(rtkmem);
-      }
-#endif
-      return err;
-  }
-
-#ifdef USE_SVP
-  if (useSVP)
-  {
-      Sec_OpaqueBufferHandle *desc = NULL;
-      desc = (Sec_OpaqueBufferHandle*)calloc(sizeof(Sec_OpaqueBufferHandle), 1);
-      desc->dataBufSize = actualDataLength;
-      desc->ion_fd = rtkmem->ion_fd;
-      desc->map_fd = rtkmem->ion_sharefd;
-      desc->rtkmem_handle = (void *)rtkmem->handle;
-
-      void* secToken = NULL;
-      svp_buffer_alloc_token(&secToken);
-      svp_buffer_to_token(m_pSVPContext, (void *)desc, secToken);
-      memcpy((void *)payloadData, secToken, svp_token_size());
-      svp_buffer_free_token(secToken);
-      //TODO: note the return token data and size
-  }
-#endif
-
-  if (!m_fCommit) {
-      err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, &m_playreadyLevels);
-      m_fCommit = TRUE;
-  }
-
-  if (useSVP)
-  {
-    // Return clear content.
-    *f_pcbOpaqueClearContent = payloadDataSize;
-    *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-  }
-  else
-  {
-    *f_pcbOpaqueClearContent = actualDataLength;
-    *f_ppbOpaqueClearContent = (uint8_t *)dataItr;
-  }
-
-  return CDMi_SUCCESS;
-}
-
-CDMi_RESULT MediaKeySession::DecryptAesCTR(
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent,
-    const uint8_t keyIdLength,
-    const uint8_t* f_keyId,
-    bool initWithLast15
-    )
-{
-  DRM_RESULT dr = DRM_SUCCESS;
-  DRM_RESULT err = DRM_SUCCESS;
-  void *DstPhys = NULL;
-  bool useSVP = true;
-#ifdef USE_SVP
-  RtkSecureMemory *rtkmem = NULL;
-#endif
-
-  if ( f_keyId != nullptr ){
-      KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
-
-      if (m_currentDecryptContext == nullptr
-                || m_currentDecryptContext->keyId != keyId)
-      {
-          m_currentDecryptContext = GetDecryptCtx( keyId );
-      }
-  }
-  if ( m_currentDecryptContext == nullptr ){
-      fprintf(stderr, "[%s:%d] m_currentDecryptContext is Nullptr",__FUNCTION__,__LINE__);
-      return CDMi_S_FALSE;
-  }
-
-  SafeCriticalSection systemLock(drmAppContextMutex_);
-
-
-  assert(f_cbIV > 0);
-  if(payloadDataSize == 0){
-      return CDMi_SUCCESS;
-  }
-
-  DRM_AES_COUNTER_MODE_CONTEXT ctrContext = { 0 };
-
-  if (initWithLast15) {
-      // Netflix case
-      memcpy(&ctrContext, f_pbIV, DRM_MIN(f_cbIV, sizeof(ctrContext)) );
-
-  } else {
-      // Regular case
-      uint8_t buf[ f_cbIV ];
-      for (uint32_t i = 0; i < f_cbIV / 2; i++) {
-        buf[i] = f_pbIV[f_cbIV - i - 1];
-        buf[f_cbIV - i - 1] = f_pbIV[i];
-      }
-      MEMCPY(&ctrContext.qwInitializationVector, buf, f_cbIV);
-  }
-
-  uint8_t *data = const_cast<uint8_t*>(payloadData);
-  uint16_t inClear = 0;
-  uint32_t inEncrypted = 0;
-  uint32_t subSampleCount = 0;
-  uint8_t *dataItr = data;
-  uint32_t actualDataLength = 0;
-
-  // 1. read the subsample count
-  memcpy(&subSampleCount, data, sizeof(subSampleCount));
-  f_cdwSubSampleMapping = subSampleCount;
-  dataItr += sizeof(subSampleCount);
-
-#ifdef USE_SVP
-  if (useSVP)
-  {
-    actualDataLength = payloadDataSize - svp_token_size();
-
-    // Allocate secure buffer for decryption.
-    rtkmem = rtk_secure_mem_new(actualDataLength, RTKMEM_VIDEO);
-    DstPhys = rtkmem->phys_addr;
-  }
-  else
-#endif
-    {
-        actualDataLength = payloadDataSize;
-    }
-
-  // 2. read the subsample buffer
-  DRM_DWORD rgdwMappings[subSampleCount*2];
-  for (unsigned int position = 0; position < (subSampleCount*2); position+=2) {
-    inClear = 0;
-    inEncrypted = 0;
-
-    memcpy(&inClear, dataItr, sizeof(inClear));
-    dataItr += sizeof(inClear);
-    memcpy(&inEncrypted, dataItr, sizeof(inEncrypted));
-    dataItr += sizeof(inEncrypted);
-
-    rgdwMappings[position] = ntohs(inClear);
-    rgdwMappings[position+1] = ntohl(inEncrypted);
-  }
-  f_pdwSubSampleMapping = reinterpret_cast<const uint32_t*>(rgdwMappings);
-
-  // 3. dataItr is the encrypted data now
-    if (useSVP)
-    {
-          err = Drm_Reader_DecryptOpaque(
-        &(m_currentDecryptContext->oDrmDecryptContext),
-        f_cdwSubSampleMapping*2,
-        reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-        ctrContext.qwInitializationVector,
-        actualDataLength,
-        (DRM_BYTE *) dataItr,
-        reinterpret_cast<DRM_DWORD*>(&actualDataLength),
-        reinterpret_cast<DRM_BYTE**>(&DstPhys));
-    }
-    else
-    {
-       DRM_DWORD* decryptedLength = 0;
-       DRM_BYTE** decryptedContent = NULL;
-       err = Drm_Reader_DecryptOpaque(
-          &(m_currentDecryptContext->oDrmDecryptContext),
-          f_cdwSubSampleMapping*2,
-          reinterpret_cast<const DRM_DWORD*>(f_pdwSubSampleMapping),
-          ctrContext.qwInitializationVector,
-          actualDataLength,
-          (DRM_BYTE *) dataItr,
-          reinterpret_cast<DRM_DWORD*>(&decryptedLength),
-          reinterpret_cast<DRM_BYTE**>(&decryptedContent));
-    }
-
-  if (DRM_FAILED(err))
-  {
-      fprintf(stderr, "[%s:%d] Drm_Reader_DecryptOpaque failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
-#ifdef USE_SVP
-      if (useSVP) {
-          // Free decrypted secure buffer.
-          rtk_secure_mem_free(rtkmem);
-      }
-#endif
-      return CDMi_S_FALSE;
-  }
-
-#ifdef USE_SVP
-  if (useSVP)
-  {
-      Sec_OpaqueBufferHandle *desc = NULL;
-      desc = (Sec_OpaqueBufferHandle*)calloc(sizeof(Sec_OpaqueBufferHandle), 1);
-      desc->dataBufSize = actualDataLength;
-      desc->ion_fd = rtkmem->ion_fd;
-      desc->map_fd = rtkmem->ion_sharefd;
-      desc->rtkmem_handle = (void *)rtkmem->handle;
-
-      void* secToken = NULL;
-      svp_buffer_alloc_token(&secToken);
-      svp_buffer_to_token(m_pSVPContext, (void*)desc, secToken);
-      memcpy((void *)payloadData, secToken, svp_token_size());
-      svp_buffer_free_token(secToken);
-      //TODO: note the return token data and size
-  }
-#endif
-
-  if (!m_fCommit) {
-      err = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, &m_playreadyLevels);
-      m_fCommit = TRUE;
-  }
-
-  if (useSVP)
-  {
-    // Return clear content.
-    *f_pcbOpaqueClearContent = payloadDataSize;
-    *f_ppbOpaqueClearContent = (uint8_t *)payloadData;
-  }
-  else
-  {
-    *f_pcbOpaqueClearContent = actualDataLength;
-    *f_ppbOpaqueClearContent = (uint8_t *)dataItr;
-  }
-
-  return CDMi_SUCCESS;
-}
-#endif
 
 CDMi_RESULT MediaKeySession::ReleaseClearContent(
     const uint8_t *f_pbSessionKey,
