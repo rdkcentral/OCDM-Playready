@@ -26,6 +26,11 @@
 #include <drmbytemanip.h>
 #include <drmmanagertypes.h>
 #include <drmconstants.h>
+
+#if defined TEE_CONFIG_NEED
+#include <playready_ca.h>
+#endif /* TEE_CONFIG_NEED */
+
 #undef min
 #undef max
 #undef __in
@@ -67,24 +72,6 @@ typedef struct
     char pszGlobalDir[128];
     char pszApplicationDir[128];
 }DRM_INIT_CONTEXT;
-
-typedef struct SecureBufferInfo_struct
-{
-    uint32_t secureBufSize;
-    void *pSecBufHandle;
-    void *pPhysAddr;
-    void *pVirtualAddr;
-    uint32_t align;
-    int ion_fd;
-    int map_fd;
-    bool  bCreateSecureMemRegion;
-    bool  bReleaseSecureMemRegion;
-    void *pSecureMemRegion;
-    void *pAVSecBuffer;
-    void *pEncryptedDataBuffer;
-    uint32_t SecureMemRegionSize;
-    uint32_t patternClearBlocks;
-} SecureBufferInfo;
 
 #define PR4ChkDR(expr) do {                           \
             dr = ( expr );                            \
