@@ -718,8 +718,9 @@ public:
         m_readDir = config.ReadDir.Value();
         m_storeLocation = config.StoreLocation.Value();
 
-        svpGetDrmStoragePath(m_readDir, m_storeLocation);
-
+        svpGetDrmStoragePath(m_readDir, m_storePath, m_storeLocation);
+ 
+        WPEFramework::Core::Directory(m_storePath.c_str()).CreatePath();
         WPEFramework::Core::Directory(m_readDir.c_str()).CreatePath();
 
         string homePath = config.HomePath.Value();
@@ -749,6 +750,7 @@ private:
 
     string m_readDir;
     string m_storeLocation;
+    string m_storePath;
 
     DRM_BYTE *m_pbPublisherCert = nullptr;
     DRM_DWORD m_cbPublisherCert = 0;
