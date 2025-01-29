@@ -1576,7 +1576,7 @@ CDMi_RESULT MediaKeySession::Decrypt(
   if (useSVP)
   {
     pDecryptedLength = reinterpret_cast<DRM_DWORD*>(actualEncDataLength);
-    pDecryptedContent = reinterpret_cast<DRM_BYTE**>(m_stSecureBuffInfo.pPhysAddr);
+    pDecryptedContent = reinterpret_cast<DRM_BYTE*>(m_stSecureBuffInfo.pPhysAddr);
     pEncryptedData = reinterpret_cast<DRM_BYTE*>(m_stSecureBuffInfo.pEncryptedDataBuffer);
   }
   else
