@@ -24,9 +24,9 @@ endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-set(DRM_PLUGIN_NAME "PlayReady4")
+set(DRM_PLUGIN_NAME "Playready")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -w -Wno-psabi ")
 
 if(NOT CMAKE_CROSSCOMPILING)
    set(STAGING_DIR "${CMAKE_INSTALL_PREFIX}")
@@ -34,28 +34,47 @@ else()
    set(STAGING_DIR "${CMAKE_FIND_ROOT_PATH}")
 endif()
 
+if(DEFINED USE_PLAYREADY_CMAKE)
+    find_package(PlayReady REQUIRED)
+endif()
+
+find_package(OpenSSL REQUIRED)
+
 file(GLOB DRM_PLUGIN_INCLUDES *.h)
 
+if(DEFINED USE_PLAYREADY_CMAKE)
 set(DRM_PLUGIN_LIBS 
-    ${PLAYREADY4_LIBRARIES})
+    ${PLAYREADY_LIBRARIES})
+endif()
 
 set(DRM_PLUGIN_SOURCES 
     MediaSession.cpp 
     MediaSystem.cpp
     MediaSessionExt.cpp)
 
+
 # add the library
 add_library(${DRM_PLUGIN_NAME} SHARED ${DRM_PLUGIN_SOURCES})
-target_compile_definitions(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY4_FLAGS})
-target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY4_INCLUDE_DIRS})
-target_include_directories(${DRM_PLUGIN_NAME} PRIVATE source/curl_prebuilt/include/curl source/inc source/modules/contentspecific/h264/real source/oem/ansi/inc source/oem/common/broker/pkImpl source/oem/common/crypto/aes source/oem/common/inc source/oem/common/trustedexec source/results source/securecore/trustedexec/base source/tools/devicedevcert/bcertdump source/tools/pseudotee/dll source/tools/shared/common source/tools/shared/netio source/tools/shared/oem source/tools/shared/remoteprovisioningmock source/trustedexec/base source/trustedexec/debug source/trustedexec/decrypt source/trustedexec/inc source/trustedexec/licprep source/trustedexec/rprov source/trustedexec/teeproxystub/common source/trustedexec/teeproxystub/proxy/common source/trustedexec/teeproxystub/stub/common)
-add_compile_definitions(DRM_BUILD_PROFILE=900)
-target_link_libraries(${DRM_PLUGIN_NAME} PRIVATE libplayreadypk.so)
+
+if(DEFINED USE_PLAYREADY_CMAKE)
+target_compile_definitions(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_FLAGS})
+target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_INCLUDE_DIRS})
+target_link_libraries(${DRM_PLUGIN_NAME} ${DRM_PLUGIN_LIBS})
+endif()
+
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES SUFFIX ".drm")
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES PREFIX "")
 
-find_package(OpenSSL REQUIRED)
+# openssl library added
 target_link_libraries(${DRM_PLUGIN_NAME} OpenSSL::SSL)
+
+if(DEFINED PLAYREADY_REALTEK)
+    target_link_libraries(${DRM_PLUGIN_NAME} PRIVATE playreadypk)
+    message(STATUS "PLAYREADY_REALTEK is ON")
+elseif(DEFINED PLAYREADY_BROADCOM)
+    #target_link_libraries(${DRM_PLUGIN_NAME} PRIVATE NEXUS::NEXUS NXCLIENT::NXCLIENT NexusWidevine::NexusWidevine)
+    #message(STATUS "PLAYREADY_BROADCOM is ON")
+endif()
 
 # Enable SVP.
 #if("${RDK_SVP}" STREQUAL "ENABLED")
@@ -64,7 +83,7 @@ target_link_libraries(${DRM_PLUGIN_NAME} OpenSSL::SSL)
     target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/gstreamer-1.0)
     target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/glib-2.0)
     target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/lib/glib-2.0/include)
-    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/realtek/genericLinux/include)
+    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/WPEFramework)
     target_link_libraries(${DRM_PLUGIN_NAME} gstsvpext)
 #endif()
 
@@ -87,6 +106,13 @@ if("${NO_PERSISTENT_LICENSE_CHECK}" STREQUAL "ON")
     message(STATUS "NO_PERSISTENT_LICENSE_CHECK is ON")
 else()
     message(STATUS "NO_PERSISTENT_LICENSE_CHECK is OFF")
+endif()
+
+if("${TEE_CONFIG_NEED}" STREQUAL "ON")
+    add_definitions( -DTEE_CONFIG_NEED=1 )
+    message(STATUS "TEE_CONFIG_NEED is ON")
+else()
+    message(STATUS "TEE_CONFIG_NEED is OFF")
 endif()
 
 install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/WPEFramework/OCDM)
