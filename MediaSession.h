@@ -21,7 +21,9 @@
 #include <drmmathsafe.h>
 #include <drmtypes.h>
 #include <drmerr.h>
+#if defined DRM_ERROR_NAME_SUPPORT
 #include <drmerror.h>
+#endif
 #include <drmversionconstants.h>
 #include <drmbytemanip.h>
 #include <drmmanagertypes.h>
@@ -63,7 +65,11 @@
 #define CREATE_DRM_STRING DRM_CREATE_DRM_STRING
 #endif
 
+#if defined DRM_ERROR_NAME_SUPPORT
 #define DRM_ERR_NAME( dr ) DRM_ERR_GetErrorNameFromCode( dr, nullptr )
+#else
+#define DRM_ERR_NAME( dr ) #dr
+#endif
 
 #define DRM_E_TEE_OUTPUT_PROTECTION_INSUFFICIENT_HDCP ((DRM_RESULT)0x8004dc80)
 #define DRM_E_TEE_OUTPUT_PROTECTION_INSUFFICIENT_HDCP22 ((DRM_RESULT)0x8004dc81)

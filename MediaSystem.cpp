@@ -41,7 +41,11 @@
 
 using namespace std;
 
-extern DRM_CONST_STRING g_dstrDrmPath;
+/* TO DO: temp fix to resolve build error */
+#ifndef ENABLE_AMBIGUOUS_FIX
+ extern DRM_CONST_STRING g_dstrDrmPath;
+#endif
+
 DRM_CONST_STRING g_dstrCDMDrmStoreName;
 
 WPEFramework::Core::CriticalSection drmAppContextMutex_;
@@ -54,7 +58,7 @@ static DRM_WCHAR* createDrmWchar(std::string const& s) {
     return w;
 }
 
-static void PackedCharsToNative(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
+static void PackedCharsToNativeImpl(DRM_CHAR *f_pPackedString, DRM_DWORD f_cch) {
     DRM_DWORD ich = 0;
     if( f_pPackedString == nullptr
      || f_cch == 0 )
@@ -76,7 +80,7 @@ std::string GetDrmStorePath()
     DRM_UTL_DemoteUNICODEtoASCII(g_dstrCDMDrmStoreName.pwszString,
             pathStr, MAXLEN);
     ((DRM_BYTE*)pathStr)[g_dstrCDMDrmStoreName.cchString] = 0;
-    PackedCharsToNative(pathStr, g_dstrCDMDrmStoreName.cchString + 1);
+    PackedCharsToNativeImpl(pathStr, g_dstrCDMDrmStoreName.cchString + 1);
 
     return string(pathStr);
 }
@@ -272,7 +276,7 @@ public:
         DRM_UTL_DemoteUNICODEtoASCII(g_dstrReqTagPlayReadyClientVersionData.pwszString,
                 versionStr, MAXLEN);
         ((DRM_BYTE*)versionStr)[g_dstrReqTagPlayReadyClientVersionData.cchString] = 0;
-        PackedCharsToNative(versionStr, g_dstrReqTagPlayReadyClientVersionData.cchString + 1);
+        PackedCharsToNativeImpl(versionStr, g_dstrReqTagPlayReadyClientVersionData.cchString + 1);
         return string(versionStr);
     }
 
@@ -483,6 +487,7 @@ public:
     {
         DRM_BYTE *appOpaqueBuffer = nullptr;
         DRM_VOID *pDrmOemContext = NULL;
+        bool bIsInitSecureClockNeed = false;
 
         if (m_poAppContext.get() != nullptr) {
            m_poAppContext.reset();
@@ -528,6 +533,58 @@ public:
             m_poAppContext.reset();
             fprintf(stderr, "[%s:%d] Drm_Revocation_SetBuffer failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
             return CDMi_S_FALSE;
+        }
+
+        bIsInitSecureClockNeed = svpIsSecureClockInitNeed();
+
+        if(bIsInitSecureClockNeed)
+        {
+            DRMFILETIME               ftSystemTime; /* Initialized by Drm_SecureTime_GetValue */
+            DRM_SECURETIME_CLOCK_TYPE eClockType;   /* Initialized by Drm_SecureTime_GetValue */
+
+            CDMi_RESULT cr = CDMi_SUCCESS;
+            DRM_RESULT dr = DRM_SUCCESS;
+
+            dr = Drm_SecureTime_GetValue( m_poAppContext.get(), &ftSystemTime, &eClockType  );
+            if (dr == DRM_E_CLK_NOT_SUPPORTED)  /* Secure Clock not supported, try the Anti-Rollback Clock */
+            {
+#if defined DRM_ANTI_ROLLBACK_CLOCK_SUPPORT
+                DRMSYSTEMTIME   systemTime;
+                struct timeval  tv;
+                struct tm      *tm;
+
+                printf("Secure Clock not supported, trying the Anti-Rollback Clock...");
+
+                gettimeofday(&tv, nullptr);
+                tm = gmtime(&tv.tv_sec);
+
+                systemTime.wYear         = tm->tm_year+1900;
+                systemTime.wMonth        = tm->tm_mon+1;
+                systemTime.wDayOfWeek    = tm->tm_wday;
+                systemTime.wDay          = tm->tm_mday;
+                systemTime.wHour         = tm->tm_hour;
+                systemTime.wMinute       = tm->tm_min;
+                systemTime.wSecond       = tm->tm_sec;
+                systemTime.wMilliseconds = tv.tv_usec/1000;
+
+
+                if(Drm_AntiRollBackClock_Init(m_poAppContext.get(), &systemTime) != 0)
+                {
+                    printf("\n antoFailed to initiize Anti-Rollback Clock, quitting....");
+                    return CDMi_S_FALSE;
+                }
+#else
+            printf("Secure Clock and Anti-Rollback Clock is not supported...");
+            return CDMi_S_FALSE;
+#endif
+            }
+            else
+            {
+                if (dr != 0) {
+                    printf("\nExpect platform to support Secure Clock or Anti-Rollback Clock. Possible certificate (error 0x%08X)", static_cast<unsigned int>(dr));
+                    return CDMi_S_FALSE;
+                }
+            }
         }
 
         if( !svpLoadRevocationList())
@@ -604,6 +661,8 @@ public:
     void Deinitialize(const WPEFramework::PluginHost::IShell * shell)
     {
         TeardownSystemExt();
+        /* We can do SoC specific de-init requirement for Playready */
+        svpPlatformUninitializePlayready();
     }
 
     CDMi_RESULT TeardownSystemExt() /* override */
@@ -727,7 +786,7 @@ public:
         if(!homePath.empty()) {
             WPEFramework::Core::SystemInfo::SetEnvironment(_T("HOME"), homePath.c_str());
         } else {
-            fprintf(stderr, "[%s:%d] Error: could not set HOME variable. SecureStop functionality may not work!",__FUNCTION__,__LINE__);
+            fprintf(stderr, "[%s:%d] Warning : could not set HOME variable. SecureStop functionality may not work!",__FUNCTION__,__LINE__);
         }
 
         CreateSystemExt();
