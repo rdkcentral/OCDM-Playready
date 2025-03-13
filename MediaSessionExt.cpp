@@ -74,58 +74,132 @@ CDMi_RESULT MediaKeySession::SetDrmHeader(const uint8_t drmHeader[], uint32_t dr
 
 CDMi_RESULT MediaKeySession::BindKeyNow(DECRYPT_CONTEXT decryptContext)
 {
-      DRM_VOID * pvData = nullptr;
-      DRMPFNPOLICYCALLBACK pfnOPLCallback = nullptr;
-      DECRYPT_CONTEXT tmpDecryptContext;
-      DRM_RESULT dr;
+    DRM_VOID * pvData = nullptr;
+    DRMPFNPOLICYCALLBACK pfnOPLCallback = nullptr;
+    DECRYPT_CONTEXT tmpDecryptContext;
+    DRM_DWORD decryptionMode;
+    bool bIsAudioNeedNonSVPContext;
+    CDMi_RESULT result = CDMi_SUCCESS;
+    DRM_RESULT dr;
 
-      if ( CDMi_SUCCESS != SetKeyIdProperty( decryptContext->keyId ) )
-      {
-              return CDMi_S_FALSE;
-      }
+    for(;;)
+    {
+        if ( CDMi_SUCCESS != SetKeyIdProperty( decryptContext->keyId ) )
+        {
+            result = CDMi_S_FALSE;
+            break;
+        }
 
-      dr = ReaderBind(
-               RIGHTS,
-               sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-               _PolicyCallback,
-               pvData,
-               &(decryptContext->oDrmDecryptContext) );
+        decryptionMode = OEM_TEE_DECRYPTION_MODE_HANDLE;
 
-      if ( DRM_FAILED( dr ) ){
-             fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
-             return CDMi_S_FALSE;
-     } else {
-                dr = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, pvData);
-                if (DRM_FAILED(dr))
-                {
-                        fprintf(stderr, "[%s:%d] Drm_Reader_Commit failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
-                        return CDMi_S_FALSE;
-                }
-      }
-         if ( nullptr == ( tmpDecryptContext = GetDecryptCtx( decryptContext->keyId ) ) ){
-         m_DecryptContextVector.push_back(decryptContext);
-         }
-        return CDMi_SUCCESS;
+        dr = Drm_Content_SetProperty(m_poAppContext,
+                                DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                (const DRM_BYTE*)&decryptionMode,
+                                sizeof decryptionMode);
+        if (!DRM_SUCCEEDED(dr)) {
+            fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+            result = CDMi_S_FALSE;
+            break;
+        }
+
+        dr = ReaderBind(
+                        RIGHTS,
+                        sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                        _PolicyCallback,
+                        pvData,
+                        &(decryptContext->oDrmDecryptContext ) );
+
+        if (DRM_FAILED(dr))
+        {
+            fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+            result = CDMi_S_FALSE;
+            break;
+        }
+
+        dr = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, pvData);
+        if (DRM_FAILED(dr))
+        {
+            fprintf(stderr, "[%s:%d] Drm_Reader_Commit failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+            result = CDMi_S_FALSE;
+            break;
+        }
+
+        bIsAudioNeedNonSVPContext = svpIsAudioNeedNonSVPContext();
+
+        if(bIsAudioNeedNonSVPContext)
+        {
+            decryptionMode = OEM_TEE_DECRYPTION_MODE_NOT_SECURE;
+            dr = Drm_Content_SetProperty(m_poAppContext,
+                                    DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                    (const DRM_BYTE*)&decryptionMode,
+                                    sizeof decryptionMode);
+            if (!DRM_SUCCEEDED(dr)) {
+                fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+            result = CDMi_S_FALSE;
+            break;
+            }
+
+            dr = ReaderBind(
+                            RIGHTS,
+                            sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                            _PolicyCallback,
+                            pvData,
+                            &(decryptContext->oDrmDecryptAudioContext ) );
+
+            if (DRM_FAILED(dr))
+            {
+            fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+            result = CDMi_S_FALSE;
+            break;
+            }
+
+            dr = Drm_Reader_Commit(m_poAppContext, _PolicyCallback, pvData);
+            if (DRM_FAILED(dr))
+            {
+                fprintf(stderr, "[%s:%d] Drm_Reader_Commit failed. 0x%X - %s",__FUNCTION__,__LINE__,dr,DRM_ERR_NAME(dr));
+                result = CDMi_S_FALSE;
+                break;
+            }
+        }
+
+        if ( nullptr == ( tmpDecryptContext = GetDecryptCtx( decryptContext->keyId ) ) ){
+            m_DecryptContextVector.push_back(decryptContext);
+        }
+
+        break;
+    }
+
+    return result;
 }
 
 CDMi_RESULT MediaKeySession::BindKey(KeyId keyId)
 {
-      DECRYPT_CONTEXT decryptContext;
-      decryptContext = NEW_DECRYPT_CONTEXT();
-      decryptContext->keyId = keyId;
+    DECRYPT_CONTEXT decryptContext;
+    CDMi_RESULT result = CDMi_SUCCESS;
+    decryptContext = NEW_DECRYPT_CONTEXT();
+    decryptContext->keyId = keyId;
+    
+    auto it = mBindMap.find(keyId);
 
-      auto it = mBindMap.find(keyId);
-      if (it != mBindMap.end())
-          {
-                  it->second = decryptContext;
-                  return CDMi_SUCCESS;
-          }
-          else
-          {
-                  BindKeyNow(decryptContext);
-                  mBindMap.insert(std::make_pair(decryptContext->keyId, std::shared_ptr<__DECRYPT_CONTEXT>()));
-          }
-    return CDMi_SUCCESS;
+    for(;;)
+    {
+        if (it != mBindMap.end())
+        {
+            it->second = decryptContext;
+            break;
+        }
+
+        result = BindKeyNow(decryptContext);
+        if (CDMi_SUCCESS != result)
+        {
+            break;
+        }
+        mBindMap.insert(std::make_pair(decryptContext->keyId, std::shared_ptr<__DECRYPT_CONTEXT>()));
+
+        break;
+    }
+
+    return result;
 }
 
 CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t f_rgbLicenseData[], uint32_t f_cbLicenseDataSize, uint8_t * f_pSecureStopId)
@@ -188,7 +262,7 @@ CDMi_RESULT MediaKeySession::StoreLicenseData(const uint8_t f_rgbLicenseData[], 
 
         if (DRM_SUCCEEDED( dr )) {
             if ( m_piCallback != nullptr ){
-                if (CDMi_SUCCESS !=BindKey(keyId))
+                if (CDMi_SUCCESS != BindKey(keyId))
                 {
                   fprintf(stderr, "[%s:%d] BindKey() failed for keyId %s",__FUNCTION__,__LINE__,printGuid(keyId));
                 }
@@ -218,58 +292,120 @@ CDMi_RESULT MediaKeySession::SelectKeyId( const uint8_t f_keyLength, const uint8
     DRM_RESULT err;
     DRMPFNPOLICYCALLBACK pfnOPLCallback = nullptr;
     DRM_VOID * pvData = nullptr;
+    DRM_DWORD decryptionMode;
+    CDMi_RESULT result = CDMi_SUCCESS;
+    bool bIsAudioNeedNonSVPContext;
 
     pfnOPLCallback = _PolicyCallback;
 
-    if ( f_keyId == nullptr || f_keyLength != DRM_ID_SIZE )
+    for (;;)
     {
-        fprintf(stderr, "[%s:%d] Bad value for keyId arg ",__FUNCTION__,__LINE__);
-        return CDMi_S_FALSE;
-    }
+        if ( f_keyId == nullptr || f_keyLength != DRM_ID_SIZE )
+        {
+            fprintf(stderr, "[%s:%d] Bad value for keyId arg ",__FUNCTION__,__LINE__);
+            result = CDMi_S_FALSE;
+            break;
+        }
 
-    KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
-    std::string keyIdHex(keyId.HexStr());
+        KeyId keyId(&f_keyId[0],KeyId::KEYID_ORDER_UUID_BE);
+        std::string keyIdHex(keyId.HexStr());
 
-    if ( nullptr != ( m_currentDecryptContext = GetDecryptCtx( keyId ) ) ){
-        return CDMi_SUCCESS;
-    }
+        /* If decrypt context exists, no need to create the new one */
+        if ( nullptr != ( m_currentDecryptContext = GetDecryptCtx( keyId ) ) ){
+            result = CDMi_SUCCESS;
+            break;
+        }
 
-    if ( CDMi_SUCCESS != SetKeyIdProperty( keyId ) )
-    {
-        fprintf(stderr, "[%s:%d] SetKeyIdProperty failed",__FUNCTION__,__LINE__);
-        return CDMi_S_FALSE;
-    }
+        if ( CDMi_SUCCESS != SetKeyIdProperty( keyId ) )
+        {
+            fprintf(stderr, "[%s:%d] SetKeyIdProperty failed",__FUNCTION__,__LINE__);
+            result = CDMi_S_FALSE;
+            break;
+        }
 
-    CDMi_RESULT result = CDMi_SUCCESS;
+        DECRYPT_CONTEXT decryptContext = NEW_DECRYPT_CONTEXT();
 
-    DECRYPT_CONTEXT decryptContext = NEW_DECRYPT_CONTEXT();
-    err = ReaderBind(
-                    RIGHTS,
-                    sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
-                    pfnOPLCallback,
-                    pvData,
-                    &(decryptContext->oDrmDecryptContext ) );
+        decryptionMode = OEM_TEE_DECRYPTION_MODE_HANDLE;
+        err = Drm_Content_SetProperty(m_poAppContext,
+                                DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                (const DRM_BYTE*)&decryptionMode,
+                                sizeof decryptionMode);
+        if (!DRM_SUCCEEDED(err)) {
+            fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+            result = CDMi_S_FALSE;
+            break;
+        }
 
-    if (DRM_FAILED(err))
-    {
-       fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
-       result = CDMi_S_FALSE;
-    } else {
+        err = ReaderBind(
+                        RIGHTS,
+                        sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                        pfnOPLCallback,
+                        pvData,
+                        &(decryptContext->oDrmDecryptContext ) );
+
+        if (DRM_FAILED(err))
+        {
+            fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+            result = CDMi_S_FALSE;
+            break;
+        } 
+
         err = Drm_Reader_Commit(m_poAppContext, pfnOPLCallback, pvData);
         if (DRM_FAILED(err))
         {
             fprintf(stderr, "[%s:%d] Drm_Reader_Commit failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
             result = CDMi_S_FALSE;
+            break;
         }
-    }
-    if (result == CDMi_SUCCESS) {
+
+        bIsAudioNeedNonSVPContext = svpIsAudioNeedNonSVPContext();
+
+        if(bIsAudioNeedNonSVPContext)
+        {
+            decryptionMode = OEM_TEE_DECRYPTION_MODE_NOT_SECURE;
+            err = Drm_Content_SetProperty(m_poAppContext,
+                                    DRM_CSP_DECRYPTION_OUTPUT_MODE,
+                                    (const DRM_BYTE*)&decryptionMode,
+                                    sizeof decryptionMode);
+            if (!DRM_SUCCEEDED(err)) {
+                fprintf(stderr, "[%s:%d] Drm_Content_SetProperty() failed with %lx - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+                result = CDMi_S_FALSE;
+                break;
+            }
+
+            err = ReaderBind(
+                            RIGHTS,
+                            sizeof(RIGHTS) / sizeof(DRM_CONST_STRING*),
+                            pfnOPLCallback,
+                            pvData,
+                            &(decryptContext->oDrmDecryptAudioContext ) );
+
+            if (DRM_FAILED(err))
+            {
+                fprintf(stderr, "[%s:%d] ReaderBind failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+                result = CDMi_S_FALSE;
+                break;
+            }
+
+            err = Drm_Reader_Commit(m_poAppContext, pfnOPLCallback, pvData);
+            if (DRM_FAILED(err))
+            {
+                fprintf(stderr, "[%s:%d] Drm_Reader_Commit failed. 0x%X - %s",__FUNCTION__,__LINE__,err,DRM_ERR_NAME(err));
+                result = CDMi_S_FALSE;
+                break;
+            }
+        }
+
         m_fCommit = TRUE;
         m_decryptInited = true;
         decryptContext->keyId = keyId;
         m_DecryptContextVector.push_back(decryptContext);
         m_currentDecryptContext = decryptContext;
-   }
-   return result;
+        
+        break;
+    }
+
+    return result;
 }
 
 CDMi_RESULT MediaKeySession::GetChallengeDataExt(uint8_t * f_pChallenge, uint32_t & f_ChallengeSize, uint32_t f_isLDL)
