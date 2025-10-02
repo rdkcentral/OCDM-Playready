@@ -15,54 +15,104 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 2.8)
 project(DRMPlayready)
 
-find_package(Thunder)
+if (DEFINED MAKE_VERBOSE)
+    set(CMAKE_VERBOSE_MAKEFILE TRUE)
+endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-set(MODULE_NAME Playready)
+set(DRM_PLUGIN_NAME "Playready")
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -w -Wno-psabi ")
 
-find_package(${NAMESPACE}Core REQUIRED)
-find_package(PlayReady REQUIRED)
+if(NOT CMAKE_CROSSCOMPILING)
+   set(STAGING_DIR "${CMAKE_INSTALL_PREFIX}")
+else()
+   set(STAGING_DIR "${CMAKE_FIND_ROOT_PATH}")
+endif()
 
-add_library(${MODULE_NAME} SHARED
-    MediaSession.cpp
+if(DEFINED USE_PLAYREADY_CMAKE)
+    find_package(PlayReady REQUIRED)
+endif()
+
+find_package(OpenSSL REQUIRED)
+
+file(GLOB DRM_PLUGIN_INCLUDES *.h)
+
+if(DEFINED USE_PLAYREADY_CMAKE)
+set(DRM_PLUGIN_LIBS 
+    ${PLAYREADY_LIBRARIES})
+endif()
+
+set(DRM_PLUGIN_SOURCES 
+    MediaSession.cpp 
     MediaSystem.cpp
     MediaSessionExt.cpp)
 
-set_target_properties(${MODULE_NAME} PROPERTIES
-        CXX_STANDARD 11
-        CXX_STANDARD_REQUIRED YES)
 
-target_compile_definitions(${MODULE_NAME} 
-    PRIVATE 
-        BSTD_CPU_ENDIAN=BSTD_ENDIAN_LITTLE
-        DRM_BUILD_PROFILE=900
-)
+# add the library
+add_library(${DRM_PLUGIN_NAME} SHARED ${DRM_PLUGIN_SOURCES})
 
-target_include_directories(${MODULE_NAME}
-    PRIVATE
-    "${CMAKE_SYSROOT}/usr/include"
-    "${CMAKE_SYSROOT}/usr/include/${NAMESPACE}"
-    ${PLAYREADY_INCLUDE_DIRS})
-
-target_link_libraries(${MODULE_NAME}
-    ${NAMESPACE}Core::${NAMESPACE}Core
-    ${PLAYREADY_LIBRARIES})
-
-# Library installation section
-set_target_properties(${MODULE_NAME} PROPERTIES SUFFIX ".drm")
-set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
-
-install(TARGETS ${MODULE_NAME}
-    PERMISSIONS OWNER_READ GROUP_READ
-    DESTINATION ${CMAKE_INSTALL_PREFIX}/share/${NAMESPACE}/OCDM)
-
-if(NOT "${CMAKE_FIND_ROOT_PATH}" STREQUAL "")
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink /etc/playready  ${CMAKE_CURRENT_BINARY_DIR}/playready)")
-    install(DIRECTORY DESTINATION ${CMAKE_INSTALL_PREFIX}/../${PERSISTENT_PATH}/OCDM)
-    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/playready DESTINATION ${CMAKE_INSTALL_PREFIX}/../${PERSISTENT_PATH}/OCDM/)
+if(DEFINED USE_PLAYREADY_CMAKE)
+target_compile_definitions(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_FLAGS})
+target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${PLAYREADY_INCLUDE_DIRS})
+target_link_libraries(${DRM_PLUGIN_NAME} ${DRM_PLUGIN_LIBS})
 endif()
+
+set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES SUFFIX ".drm")
+set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES PREFIX "")
+
+# openssl library added
+target_link_libraries(${DRM_PLUGIN_NAME} OpenSSL::SSL)
+
+if(DEFINED PLAYREADY_REALTEK)
+    target_link_libraries(${DRM_PLUGIN_NAME} PRIVATE playreadypk)
+    message(STATUS "PLAYREADY_REALTEK is ON")
+elseif(DEFINED PLAYREADY_BROADCOM)
+    #target_link_libraries(${DRM_PLUGIN_NAME} PRIVATE NEXUS::NEXUS NXCLIENT::NXCLIENT NexusWidevine::NexusWidevine)
+    #message(STATUS "PLAYREADY_BROADCOM is ON")
+endif()
+
+# Enable SVP.
+#if("${RDK_SVP}" STREQUAL "ENABLED")
+    message(STATUS "Using RDK_SVP")
+    add_definitions (-DUSE_SVP)
+    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/gstreamer-1.0)
+    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/glib-2.0)
+    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/lib/glib-2.0/include)
+    target_include_directories(${DRM_PLUGIN_NAME} PRIVATE ${CMAKE_SYSROOT}/usr/include/WPEFramework)
+    target_link_libraries(${DRM_PLUGIN_NAME} gstsvpext)
+#endif()
+
+if("${DRM_ERROR_NAME_SUPPORT}" STREQUAL "ON")
+    add_definitions( -DDRM_ERROR_NAME_SUPPORT )
+    message(STATUS "DRM_ERROR_NAME_SUPPORT is ON")
+else()
+    message(STATUS "DRM_ERROR_NAME_SUPPORT is OFF")
+endif()
+
+if("${DRM_ANTI_ROLLBACK_CLOCK_SUPPORT}" STREQUAL "ON")
+    add_definitions( -DDRM_ANTI_ROLLBACK_CLOCK_SUPPORT )
+    message(STATUS "DRM_ANTI_ROLLBACK_CLOCK_SUPPORT is ON")
+else()
+    message(STATUS "DRM_ANTI_ROLLBACK_CLOCK_SUPPORT is OFF")
+endif()
+
+if("${NO_PERSISTENT_LICENSE_CHECK}" STREQUAL "ON")
+    add_definitions( -DNO_PERSISTENT_LICENSE_CHECK=1 )
+    message(STATUS "NO_PERSISTENT_LICENSE_CHECK is ON")
+else()
+    message(STATUS "NO_PERSISTENT_LICENSE_CHECK is OFF")
+endif()
+
+if("${TEE_CONFIG_NEED}" STREQUAL "ON")
+    add_definitions( -DTEE_CONFIG_NEED=1 )
+    message(STATUS "TEE_CONFIG_NEED is ON")
+else()
+    message(STATUS "TEE_CONFIG_NEED is OFF")
+endif()
+
+install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/WPEFramework/OCDM)
